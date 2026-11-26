@@ -5,14 +5,62 @@
   "desarrollo": "Pasó anoche en Francia, por la Champions League. Upamecano puso el uno a cero para el Bayern en el primer tiempo. Pero en la segunda mitad apareció Ayase Ueda para empatar, y apenas tres minutos después, Aleksandar Pavlović metió el balón en su propio arco. Lille dos, Bayern uno. Y ojo, el técnico del Lille es Davide Ancelotti, el hijo de Carlo. Fue su primera victoria en esta Champions, y el Bayern se quedó fuera de los ocho primeros.",
   "cierre": "¿Sorpresa, o el Bayern ya no da miedo? Te leo en comentarios, y sígueme en 11 Records.",
   "imagenes": [
-    {"buscar": "FC Bayern Munich team", "debe": ["Bayern"]},
-    {"buscar": "Stade Pierre-Mauroy Lille", "debe": ["Pierre", "Mauroy"], "wiki": "Stade Pierre-Mauroy"},
-    {"buscar": "Dayot Upamecano Bayern", "debe": ["Upamecano"], "wiki": "Dayot Upamecano"},
-    {"buscar": "Ayase Ueda", "debe": ["Ueda"], "wiki": "Ayase Ueda"},
-    {"buscar": "Aleksandar Pavlović Bayern", "debe": ["Pavlovic"], "wiki": "Aleksandar Pavlović"},
-    {"buscar": "Davide Ancelotti", "debe": ["Davide", "Ancelotti"], "wiki": "Davide Ancelotti"},
-    {"buscar": "LOSC Lille supporters", "debe": ["Lille"]},
-    {"buscar": "FC Bayern München Allianz Arena", "debe": ["Bayern"]}
+    {
+      "buscar": "FC Bayern Munich players",
+      "debe": [
+        "Bayern"
+      ]
+    },
+    {
+      "buscar": "Stade Pierre-Mauroy Lille",
+      "debe": [
+        "Pierre",
+        "Mauroy"
+      ],
+      "wiki": "Stade Pierre-Mauroy"
+    },
+    {
+      "buscar": "Dayot Upamecano Bayern",
+      "debe": [
+        "Upamecano"
+      ],
+      "wiki": "Dayot Upamecano"
+    },
+    {
+      "buscar": "Ayase Ueda",
+      "debe": [
+        "Ueda"
+      ],
+      "wiki": "Ayase Ueda"
+    },
+    {
+      "buscar": "Aleksandar Pavlović FC Bayern",
+      "debe": [
+        "Pavlovic",
+        "Bayern"
+      ]
+    },
+    {
+      "buscar": "Davide Ancelotti",
+      "debe": [
+        "Davide",
+        "Ancelotti"
+      ],
+      "wiki": "Davide Ancelotti"
+    },
+    {
+      "buscar": "LOSC Lille",
+      "debe": [
+        "Lille"
+      ]
+    },
+    {
+      "buscar": "Vincent Kompany Bayern",
+      "debe": [
+        "Kompany"
+      ],
+      "wiki": "Vincent Kompany"
+    }
   ],
   "fuente": "https://www.deportestvc.com/champions-league/resultados-champions-league-hoy-barcelona-golea-sorprenden-al-psg-2026-11-25"
 }

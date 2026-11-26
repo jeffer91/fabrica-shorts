@@ -30,6 +30,8 @@ Cada imagen es un objeto, en el orden en que se narra:
 - **debe**: palabras que TIENEN que estar en el nombre del archivo de la foto. Usar el apellido de la persona
   que se nombra en ese momento. Si el apellido es ambiguo, poner nombre y apellido
   (Cristiano Ronaldo → ["Cristiano", "Ronaldo"], no solo "Ronaldo").
+- Si el nombre puede ser de varias personas (ej. "Aleksandar Pavlović" también es basquetbolista), poner en
+  "debe" el apellido + el club (["Pavlovic", "Bayern"]) y en "wiki" el título con aclaración, o no poner "wiki".
 - **wiki**: título exacto del artículo de Wikipedia de esa persona/club; se usa si la búsqueda no encuentra una foto segura.
 - No pedir trofeos genéricos ("Ballon d'Or trophy") sin "debe": salen fotos de otros jugadores.
 - Para objetos/estadios sin persona: `{"buscar": "Santiago Bernabéu stadium", "debe": ["Bernabeu"]}`.

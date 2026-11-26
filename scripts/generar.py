@@ -346,12 +346,21 @@ def buscar_commons(termino, debe, usadas):
     return None
 
 
+FUTBOL = ("futbol", "football", "soccer", "estadio", "stadium", "club", "seleccion", "entrenador",
+          "director tecnico", "manager", "coach", "liga", "league", "copa", "cup", "uefa", "fifa", "conmebol")
+
+
 def foto_principal_wikipedia(nombre, usadas):
     """Foto principal del articulo de Wikipedia (siempre es la persona/club correcto)."""
     for lang in ("es", "en"):
         r = api_json(f"https://{lang}.wikipedia.org/w/api.php", {
-            "action": "query", "format": "json", "titles": nombre, "redirects": 1, "prop": "pageprops"})
+            "action": "query", "format": "json", "titles": nombre, "redirects": 1, "prop": "pageprops|description"})
         for p in r.get("query", {}).get("pages", {}).values():
+            # el articulo tiene que ser de futbol (evita homonimos: basquetbolistas, politicos, etc.)
+            desc = normalizar_frase(p.get("description", "") + " " + p.get("pageprops", {}).get("wikibase-shortdesc", ""))
+            if not any(k in desc for k in FUTBOL) or "desambigua" in desc or "disambiguation" in desc:
+                print(f"Wikipedia {lang} '{nombre}' descartado: '{desc.strip()[:60]}'")
+                continue
             archivo = p.get("pageprops", {}).get("page_image_free")
             if not archivo:
                 continue
