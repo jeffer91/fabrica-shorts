@@ -111,19 +111,50 @@ def normalizar_y_ajustar(entrada, salida):
 
 
 # ---------- 2. Tiempos de cada palabra ----------
+def normalizar(p):
+    import unicodedata
+    p = unicodedata.normalize("NFKD", p.lower())
+    return "".join(c for c in p if c.isalnum())
+
+
 def tiempos_palabras(wav_path, texto, duracion):
+    """Los subtitulos salen SIEMPRE del guion (palabras exactas). Whisper solo se usa para saber
+    en que momento se dice cada palabra; las que no reconoce se reparten entre sus vecinas."""
+    guion = texto.split()
+    tiempos = [None] * len(guion)
     try:
+        import difflib
         from faster_whisper import WhisperModel
         m = WhisperModel("small", device="cpu", compute_type="int8")
         segs, _ = m.transcribe(str(wav_path), language="es", word_timestamps=True, initial_prompt=texto[:200])
-        pal = [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
-        if pal:
-            return pal
+        oidas = [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
+        sm = difflib.SequenceMatcher(None, [normalizar(p) for p in guion], [normalizar(w[0]) for w in oidas], autojunk=False)
+        for bloque in sm.get_matching_blocks():
+            for k in range(bloque.size):
+                _, ini, fin = oidas[bloque.b + k]
+                tiempos[bloque.a + k] = (ini, fin)
+        print(f"Subtitulos: {sum(t is not None for t in tiempos)}/{len(guion)} palabras sincronizadas con la voz")
     except Exception as e:
         print("Whisper no disponible, reparto uniforme:", e)
-    palabras = texto.split()
-    paso = duracion / max(len(palabras), 1)
-    return [(p, i * paso, (i + 1) * paso) for i, p in enumerate(palabras)]
+    # rellenar huecos repartiendo el tiempo segun el largo de cada palabra
+    i = 0
+    while i < len(guion):
+        if tiempos[i] is not None:
+            i += 1
+            continue
+        j = i
+        while j < len(guion) and tiempos[j] is None:
+            j += 1
+        t0 = tiempos[i - 1][1] if i > 0 else 0.0
+        t1 = tiempos[j][0] if j < len(guion) else duracion
+        pesos = [len(guion[k]) + 2 for k in range(i, j)]
+        total, acc = sum(pesos), t0
+        for k, pz in zip(range(i, j), pesos):
+            dur_k = (t1 - t0) * pz / total
+            tiempos[k] = (acc, acc + dur_k)
+            acc += dur_k
+        i = j
+    return [(p, ini, fin) for p, (ini, fin) in zip(guion, tiempos)]
 
 
 # ---------- 3. Imagenes de la noticia (Wikimedia Commons, licencias libres, sin llaves) ----------
@@ -131,66 +162,146 @@ def limpiar_html(s):
     return re.sub(r"<[^>]+>", "", s or "").strip()
 
 
-def buscar_commons(termino, usadas):
+PROHIBIDAS = ("logo", "card", "poster", "stamp", "collage", "signature", "autograph", "map ", "flag",
+              "coat of arms", "crest", "banner", "drawing", "cartoon", "screenshot", "infographic", "chart")
+
+
+def api_json(url, params):
     import requests
-    params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
-              "gsrsearch": f"{termino} filetype:bitmap", "gsrlimit": 12, "prop": "imageinfo",
-              "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1400}
-    r = {}
     for intento in range(4):
-        resp = requests.get("https://commons.wikimedia.org/w/api.php", params=params, headers=UA, timeout=25)
-        if resp.ok and resp.headers.get("content-type", "").startswith("application/json"):
-            r = resp.json()
-            break
+        try:
+            resp = requests.get(url, params=params, headers=UA, timeout=25)
+            if resp.ok and resp.headers.get("content-type", "").startswith("application/json"):
+                return resp.json()
+        except Exception:
+            pass
         time.sleep(2 + 3 * intento)
+    return {}
+
+
+def credito(meta):
+    autor = limpiar_html(meta.get("Artist", {}).get("value", ""))[:40] or "Wikimedia Commons"
+    lic = meta.get("LicenseShortName", {}).get("value", "")
+    return f"Foto: {autor} · {lic} · Wikimedia Commons".replace(" ·  ·", " ·")
+
+
+def buscar_commons(termino, debe, usadas):
+    """Busca fotos en Commons. Solo acepta archivos cuyo NOMBRE contiene todas las palabras de 'debe'
+    (p. ej. 'Messi'), para no mostrar a otra persona."""
+    r = api_json("https://commons.wikimedia.org/w/api.php", {
+        "action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
+        "gsrsearch": f"{termino} filetype:bitmap", "gsrlimit": 25, "prop": "imageinfo",
+        "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1400})
     paginas = sorted(r.get("query", {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
     for p in paginas:
+        titulo = p.get("title", "")
+        tn = normalizar_frase(titulo)
+        if debe and not all(normalizar_frase(d) in tn for d in debe):
+            continue
+        if any(x in titulo.lower() for x in PROHIBIDAS):
+            continue
         ii = (p.get("imageinfo") or [{}])[0]
-        if ii.get("mime") not in ("image/jpeg", "image/png") or ii.get("width", 0) < 700:
+        if ii.get("mime") != "image/jpeg" or ii.get("width", 0) < 700:
             continue
         url = ii.get("thumburl") or ii.get("url")
-        if not url or url in usadas:
-            continue
-        meta = ii.get("extmetadata", {})
-        autor = limpiar_html(meta.get("Artist", {}).get("value", ""))[:40] or "Wikimedia Commons"
-        lic = meta.get("LicenseShortName", {}).get("value", "")
-        return url, f"Foto: {autor} · {lic} · Wikimedia Commons".replace(" ·  ·", " ·")
+        if url and url not in usadas:
+            return url, credito(ii.get("extmetadata", {})), titulo
+    return None
+
+
+def foto_principal_wikipedia(nombre, usadas):
+    """Foto principal del articulo de Wikipedia (siempre es la persona/club correcto)."""
+    for lang in ("es", "en"):
+        r = api_json(f"https://{lang}.wikipedia.org/w/api.php", {
+            "action": "query", "format": "json", "titles": nombre, "redirects": 1, "prop": "pageprops"})
+        for p in r.get("query", {}).get("pages", {}).values():
+            archivo = p.get("pageprops", {}).get("page_image_free")
+            if not archivo:
+                continue
+            c = api_json("https://commons.wikimedia.org/w/api.php", {
+                "action": "query", "format": "json", "titles": "File:" + archivo, "prop": "imageinfo",
+                "iiprop": "url|mime|extmetadata", "iiurlwidth": 1400})
+            for q in c.get("query", {}).get("pages", {}).values():
+                ii = (q.get("imageinfo") or [{}])[0]
+                url = ii.get("thumburl") or ii.get("url")
+                if url and url not in usadas and ii.get("mime") in ("image/jpeg", "image/png"):
+                    return url, credito(ii.get("extmetadata", {})), "Wikipedia: " + nombre
+    return None
+
+
+def normalizar_frase(s):
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s.lower())
+    return "".join(c for c in s if c.isalnum() or c == " ")
+
+
+def leer_pedido(item):
+    """Cada imagen del guion puede ser texto o {"buscar": ..., "debe": [...], "wiki": ...}."""
+    if isinstance(item, str):
+        return {"buscar": item, "debe": [], "wiki": None}
+    debe = item.get("debe") or []
+    return {"buscar": item.get("buscar", ""), "debe": [debe] if isinstance(debe, str) else debe,
+            "wiki": item.get("wiki")}
+
+
+def bajar(url, dst):
+    import requests
+    for intento in range(4):
+        try:
+            resp = requests.get(url, headers=UA, timeout=40)
+            if resp.ok and resp.headers.get("content-type", "").startswith("image/"):
+                dst.write_bytes(resp.content)
+                return Image.open(dst).convert("RGB")
+        except Exception:
+            pass
+        time.sleep(2 + 3 * intento)
     return None
 
 
 def imagenes_noticia(guion, n, carpeta):
-    """Devuelve n tuplas (Image, credito). Usa guion['imagenes'] (terminos de busqueda en orden)."""
-    import requests
-    terminos = [t for t in guion.get("imagenes", []) if t] or guion.get("palabras_clave", [])
-    terminos = terminos + ["football stadium", "football match crowd", "soccer ball grass"]
+    """Devuelve n tuplas (Image, credito, descripcion). Nunca rellena con fotos al azar de otra persona:
+    si una busqueda no encuentra algo seguro, usa la foto de Wikipedia o repite una ya validada."""
+    pedidos = [leer_pedido(x) for x in (guion.get("imagenes") or guion.get("palabras_clave", [])) if x]
     res, usadas = [], set()
-    for t in terminos:
+    for ped in pedidos:
         if len(res) >= n:
             break
-        try:
-            hit = buscar_commons(t, usadas)
-            if not hit:
-                print("Sin imagen para:", t)
-                continue
-            url, cred = hit
-            dst = carpeta / f"img{len(res)}.jpg"
-            for intento in range(4):
-                resp = requests.get(url, headers=UA, timeout=40)
-                if resp.ok and resp.headers.get("content-type", "").startswith("image/"):
-                    break
-                time.sleep(2 + 3 * intento)
-            dst.write_bytes(resp.content)
-            res.append((Image.open(dst).convert("RGB"), cred))
-            time.sleep(1)
-            usadas.add(url)
-            print("Imagen", len(res), "->", t)
-        except Exception as e:
-            print("Error buscando", t, e)
+        hit = buscar_commons(ped["buscar"], ped["debe"], usadas) if ped["buscar"] else None
+        if not hit and (ped["wiki"] or ped["debe"]):
+            hit = foto_principal_wikipedia(ped["wiki"] or " ".join(ped["debe"]), usadas)
+        if not hit:
+            print("Sin imagen segura para:", ped["buscar"])
+            continue
+        url, cred, titulo = hit
+        img = bajar(url, carpeta / f"img{len(res)}.jpg")
+        if img is None:
+            continue
+        res.append((img, cred, f'{ped["buscar"]} -> {titulo}'))
+        usadas.add(url)
+        print(f"Imagen {len(res)}: {ped['buscar']} -> {titulo}")
+        time.sleep(1)
     if not res:
-        res = [(Image.new("RGB", (1200, 900), "#065f46"), "")]
-    while len(res) < n:                 # si faltan, se repiten en orden
-        res.append(res[len(res) % max(1, len(res))])
+        hit = buscar_commons("football stadium crowd", [], usadas)
+        img = bajar(hit[0], carpeta / "img0.jpg") if hit else None
+        res = [(img or Image.new("RGB", (1200, 900), "#065f46"), hit[1] if hit else "", "generica")]
+    base = list(res)
+    while len(res) < n:                 # si faltan, se repiten las ya validadas
+        res.append(base[len(res) % len(base)])
     return res[:n]
+
+
+def hoja_contactos(imgs, salida):
+    """Miniaturas numeradas de las imagenes usadas, para revisarlas antes de publicar."""
+    th, cols = 300, 3
+    filas = math.ceil(len(imgs) / cols)
+    hoja = Image.new("RGB", (cols * th, filas * (th + 60)), "#111111")
+    d = ImageDraw.Draw(hoja)
+    for i, (img, _, desc) in enumerate(imgs):
+        x, y = (i % cols) * th, (i // cols) * (th + 60)
+        hoja.paste(cubrir(img, th - 10, th - 10), (x + 5, y + 5))
+        d.text((x + 8, y + th), f"{i + 1}. {desc}"[:44], font=F(16, False), fill="#ffffff")
+        d.text((x + 8, y + th + 22), f"{desc[44:88]}", font=F(16, False), fill="#bbbbbb")
+    hoja.save(salida, quality=80)
 
 
 def cubrir(img, w, h):
@@ -396,8 +507,9 @@ def render(guion, wav_path, salida_mp4, tmp):
 
     n_img = max(1, math.ceil(dur / SEG_IMAGEN))
     imgs = imagenes_noticia(guion, n_img, tmp)
+    hoja_contactos(imgs, Path(salida_mp4).with_name(Path(salida_mp4).stem + "-imagenes.jpg"))
     tarjetas, fondos, creditos = [], [], []
-    for img, cred in imgs:
+    for img, cred, _ in imgs:
         g = cubrir(img, int(IMG_W * 1.1), int(IMG_H * 1.1))       # margen para el zoom
         tarjetas.append(g)
         f = cubrir(img, W // 4, H // 4).filter(ImageFilter.GaussianBlur(6)).resize((W, H), Image.BILINEAR)

@@ -4,6 +4,59 @@
   "gancho": "Solo un futbolista en la historia ha ganado ocho Balones de Oro, y no, no es Cristiano.",
   "desarrollo": "Lionel Messi levantó su primer Balón de Oro en 2009 con el Barcelona. Después volvió a ganarlo en 2010, 2011, 2012, 2015 y 2019. En 2021 llegó el séptimo, ya en el PSG. Y en 2023, después de ganar el Mundial de Qatar con Argentina, se llevó el octavo. Cristiano Ronaldo, su gran rival, se quedó en cinco. Y ningún otro jugador ha pasado de tres.",
   "cierre": "¿Crees que alguien podrá superar este récord algún día? Déjamelo en comentarios y sígueme en 11 Records.",
-  "imagenes": ["Lionel Messi Ballon d'Or", "Lionel Messi Barcelona", "Ballon d'Or trophy", "Lionel Messi Paris Saint-Germain", "Lionel Messi Argentina 2022", "Cristiano Ronaldo", "Lionel Messi Inter Miami", "Lionel Messi"],
+  "imagenes": [
+    {
+      "buscar": "Lionel Messi Ballon d'Or",
+      "debe": [
+        "Messi"
+      ],
+      "wiki": "Lionel Messi"
+    },
+    {
+      "buscar": "Lionel Messi FC Barcelona",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Messi Barcelona celebration",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Lionel Messi Paris Saint-Germain",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Lionel Messi Argentina 2022 World Cup",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Cristiano Ronaldo",
+      "debe": [
+        "Cristiano",
+        "Ronaldo"
+      ],
+      "wiki": "Cristiano Ronaldo"
+    },
+    {
+      "buscar": "Lionel Messi Inter Miami",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Lionel Messi",
+      "debe": [
+        "Messi"
+      ],
+      "wiki": "Lionel Messi"
+    }
+  ],
   "fuente": "https://es.wikipedia.org/wiki/Bal%C3%B3n_de_Oro"
 }

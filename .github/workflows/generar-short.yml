@@ -80,6 +80,7 @@ jobs:
             [ -z "$g" ] && continue
             id=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$g")
             python scripts/generar.py "$g" build
+            cp "build/$id-imagenes.jpg" salidas/ 2>/dev/null || true
             url=""
             nombre="$id-$(date +%H%M%S)"
             if [ -n "$SUPABASE_URL" ]; then
