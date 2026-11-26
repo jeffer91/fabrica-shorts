@@ -51,7 +51,12 @@ def generar_voz(texto, salida_wav):
     for trozo in dividir_frases(texto):
         wav = modelo.generate(trozo, language_id="es", exaggeration=0.5, cfg_weight=0.5, **extra)
         partes += [wav.cpu(), pausa]
-    ta.save(str(salida_wav), torch.cat(partes, dim=1), modelo.sr)
+    crudo = Path(salida_wav).with_suffix(".crudo.wav")
+    ta.save(str(crudo), torch.cat(partes, dim=1), modelo.sr)
+    # normaliza a PCM 16 bits (lo que entiende el modulo wave) y sube un poco el volumen
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(crudo), "-ac", "1",
+                    "-af", "loudnorm=I=-16:TP=-1.5", "-ar", "24000", "-c:a", "pcm_s16le",
+                    str(salida_wav)], check=True)
 
 
 # ---------- 2. Tiempos de cada palabra ----------
