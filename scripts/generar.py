@@ -193,6 +193,8 @@ def buscar_commons(termino, debe, usadas):
         "gsrsearch": f"{termino} filetype:bitmap", "gsrlimit": 25, "prop": "imageinfo",
         "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1400})
     paginas = sorted(r.get("query", {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
+    palabras = [w for w in normalizar_frase(termino).split() if len(w) > 2]
+    candidatas = []
     for p in paginas:
         titulo = p.get("title", "")
         tn = normalizar_frase(titulo)
@@ -204,8 +206,17 @@ def buscar_commons(termino, debe, usadas):
         if ii.get("mime") != "image/jpeg" or ii.get("width", 0) < 700:
             continue
         url = ii.get("thumburl") or ii.get("url")
-        if url and url not in usadas:
-            return url, credito(ii.get("extmetadata", {})), titulo
+        if not url or url in usadas:
+            continue
+        # puntaje: cuantas palabras de la busqueda (club, año, torneo) aparecen en el nombre del archivo;
+        # se castigan fotos con varias personas ("&", "vs", "and")
+        puntos = sum(w in tn for w in palabras) * 2 - p.get("index", 0) * 0.05
+        if re.search(r"&| vs\.? | and | y ", titulo.lower()):
+            puntos -= 3
+        candidatas.append((puntos, url, credito(ii.get("extmetadata", {})), titulo))
+    if candidatas:
+        _, url, cred, titulo = max(candidatas)
+        return url, cred, titulo
     return None
 
 
@@ -267,8 +278,8 @@ def imagenes_noticia(guion, n, carpeta):
         if len(res) >= n:
             break
         hit = buscar_commons(ped["buscar"], ped["debe"], usadas) if ped["buscar"] else None
-        if not hit and (ped["wiki"] or ped["debe"]):
-            hit = foto_principal_wikipedia(ped["wiki"] or " ".join(ped["debe"]), usadas)
+        if not hit and ped["wiki"]:
+            hit = foto_principal_wikipedia(ped["wiki"], usadas)
         if not hit:
             print("Sin imagen segura para:", ped["buscar"])
             continue
@@ -299,8 +310,9 @@ def hoja_contactos(imgs, salida):
     for i, (img, _, desc) in enumerate(imgs):
         x, y = (i % cols) * th, (i // cols) * (th + 60)
         hoja.paste(cubrir(img, th - 10, th - 10), (x + 5, y + 5))
-        d.text((x + 8, y + th), f"{i + 1}. {desc}"[:44], font=F(16, False), fill="#ffffff")
-        d.text((x + 8, y + th + 22), f"{desc[44:88]}", font=F(16, False), fill="#bbbbbb")
+        lineas = envolver(d, f"{i + 1}. {desc}", F(14, False), th - 16)[:3]
+        for k, l in enumerate(lineas):
+            d.text((x + 8, y + th - 2 + k * 18), l, font=F(14, False), fill="#ffffff" if k == 0 else "#bbbbbb")
     hoja.save(salida, quality=80)
 
 
