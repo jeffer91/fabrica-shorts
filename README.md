@@ -20,7 +20,7 @@ Convierte un guion en un short vertical (1080x1920) con tu voz clonada, tu avata
   "gancho": "1 frase, 0-3 s: dato, pregunta o anecdota que detiene el scroll.",
   "desarrollo": "Los hechos verificados, 20-35 s.",
   "cierre": "Conclusion + llamado a seguir, 5 s.",
-  "palabras_clave": ["imagen 1", "imagen 2"],
+  "imagenes": ["6 a 9 busquedas en orden de la narracion, una por cada 5 s: nombres de jugadores, clubes, estadios, trofeos"],
   "fuente": "https://enlace-de-la-noticia"
 }
 ```

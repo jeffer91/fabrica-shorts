@@ -1,30 +1,47 @@
-"""Fabrica de shorts: guion JSON -> video vertical MP4 con voz clonada, avatar y subtitulos.
+"""Fabrica de shorts 11 Records: guion JSON -> short vertical de futbol con voz clonada,
+imagenes de la noticia cada 5 s, avatar pequeno, subtitulos y musica sin copyright.
 
 Uso: python scripts/generar.py guiones/2026-11-26-01.json salidas/
 """
-import json, os, re, subprocess, sys, wave
+import json, math, os, random, re, subprocess, sys, wave
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H, FPS = 1080, 1920, 30
+SEG_IMAGEN = 5.0                       # una imagen nueva cada 5 s
+DUR_MIN, DUR_MAX = 30.0, 45.0
 RAIZ = Path(__file__).resolve().parent.parent
 FUENTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+FUENTE_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+UA = {"User-Agent": "FabricaShorts11Records/1.0 (github.com/jeffer91/fabrica-shorts)"}
+
+AUDIO_EXT = {".wav", ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".flac", ".webm", ".mp4", ".3gp", ".amr"}
+IMG_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def cargar_marca():
+    base = {"nombre_canal": "11 Records", "lema": "Fútbol mundial",
+            "color_primario": "#065f46", "color_oscuro": "#03140f",
+            "color_resaltado": "#a3e635", "color_texto": "#ffffff"}
     p = RAIZ / "marca.json"
-    base = {"fondo_1": "#0b1026", "fondo_2": "#3b0d4f", "fondo_3": "#0e3a5c", "color_barra": "#dc2626", "color_texto": "#ffffff",
-            "color_resaltado": "#facc15", "nombre_canal": "Mi canal de noticias"}
     if p.exists():
-        base.update(json.loads(p.read_text(encoding="utf-8")))
+        d = json.loads(p.read_text(encoding="utf-8"))
+        base["nombre_canal"] = d.get("nombre_canal", base["nombre_canal"])
+        for k in ("lema",):   # colores fijos del estilo futbolero
+            if k in d:
+                base[k] = d[k]
     return base
+
+
+def F(tam, negrita=True):
+    return ImageFont.truetype(FUENTE if negrita else FUENTE_REG, tam)
 
 
 # ---------- 1. Voz ----------
 def dividir_frases(texto, max_chars=220):
-    frases = re.split(r"(?<=[.!?¿¡;:])\s+", texto.strip())
+    frases = re.split(r"(?<=[.!?;:])\s+", texto.strip())
     trozos, actual = [], ""
     for f in frases:
         if len(actual) + len(f) < max_chars:
@@ -38,12 +55,7 @@ def dividir_frases(texto, max_chars=220):
     return trozos
 
 
-AUDIO_EXT = {".wav", ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".flac", ".webm", ".mp4", ".3gp", ".amr"}
-IMG_EXT = {".png", ".jpg", ".jpeg", ".webp"}
-
-
 def preparar_referencia(tmp):
-    """Toma el primer audio de voz/ (cualquier formato del celular) y lo deja en WAV mono 24 kHz, max 30 s."""
     audios = sorted(p for p in (RAIZ / "voz").glob("*") if p.suffix.lower() in AUDIO_EXT)
     if not audios:
         return None
@@ -54,6 +66,11 @@ def preparar_referencia(tmp):
                     "-c:a", "pcm_s16le", str(dst)], check=True)
     print("Voz de referencia:", audios[0].name)
     return dst
+
+
+def duracion_wav(p):
+    with wave.open(str(p)) as w:
+        return w.getnframes() / w.getframerate()
 
 
 def generar_voz(texto, salida_wav):
@@ -67,14 +84,30 @@ def generar_voz(texto, salida_wav):
     pausa = torch.zeros(1, int(modelo.sr * 0.25))
     partes = []
     for trozo in dividir_frases(texto):
-        wav = modelo.generate(trozo, language_id="es", exaggeration=0.5, cfg_weight=0.5, **extra)
+        wav = modelo.generate(trozo, language_id="es", exaggeration=0.55, cfg_weight=0.5, **extra)
         partes += [wav.cpu(), pausa]
     crudo = Path(salida_wav).with_suffix(".crudo.wav")
     ta.save(str(crudo), torch.cat(partes, dim=1), modelo.sr)
-    # normaliza a PCM 16 bits (lo que entiende el modulo wave) y sube un poco el volumen
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(crudo), "-ac", "1",
-                    "-af", "loudnorm=I=-16:TP=-1.5", "-ar", "24000", "-c:a", "pcm_s16le",
-                    str(salida_wav)], check=True)
+    normalizar_y_ajustar(crudo, salida_wav)
+
+
+def normalizar_y_ajustar(entrada, salida):
+    """PCM 16 bits, volumen estandar y, si se pasa de 45 s, acelera un poco (max 15%) para encajar."""
+    tmp = Path(salida).with_suffix(".norm.wav")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(entrada), "-ac", "1",
+                    "-af", "loudnorm=I=-16:TP=-1.5", "-ar", "24000", "-c:a", "pcm_s16le", str(tmp)], check=True)
+    d = duracion_wav(tmp)
+    factor = 1.0
+    if d > DUR_MAX - 0.5:
+        factor = min(1.15, d / (DUR_MAX - 0.8))
+        print(f"Voz de {d:.1f} s: se acelera x{factor:.2f}")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp), "-af", f"atempo={factor}",
+                    "-c:a", "pcm_s16le", str(salida)], check=True)
+    d2 = duracion_wav(salida)
+    if d2 < DUR_MIN:
+        print(f"AVISO: la voz dura {d2:.1f} s (menos de 30 s). El guion necesita mas palabras.")
+    if d2 > DUR_MAX:
+        print(f"AVISO: la voz dura {d2:.1f} s (mas de 45 s). El guion necesita menos palabras.")
 
 
 # ---------- 2. Tiempos de cada palabra ----------
@@ -82,96 +115,181 @@ def tiempos_palabras(wav_path, texto, duracion):
     try:
         from faster_whisper import WhisperModel
         m = WhisperModel("small", device="cpu", compute_type="int8")
-        segs, _ = m.transcribe(str(wav_path), language="es", word_timestamps=True,
-                               initial_prompt=texto[:200])
+        segs, _ = m.transcribe(str(wav_path), language="es", word_timestamps=True, initial_prompt=texto[:200])
         pal = [(w.word.strip(), w.start, w.end) for s in segs for w in s.words if w.word.strip()]
         if pal:
             return pal
-    except Exception as e:  # sin whisper: reparto uniforme
+    except Exception as e:
         print("Whisper no disponible, reparto uniforme:", e)
     palabras = texto.split()
     paso = duracion / max(len(palabras), 1)
     return [(p, i * paso, (i + 1) * paso) for i, p in enumerate(palabras)]
 
 
-# ---------- 3. Imagenes de apoyo ----------
-def imagenes_apoyo(claves, carpeta):
-    rutas = []
-    key = os.environ.get("PEXELS_API_KEY")
-    if not key:
-        return rutas
+# ---------- 3. Imagenes de la noticia (Wikimedia Commons, licencias libres, sin llaves) ----------
+def limpiar_html(s):
+    return re.sub(r"<[^>]+>", "", s or "").strip()
+
+
+def buscar_commons(termino, usadas):
     import requests
-    for i, q in enumerate(claves[:4]):
+    params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
+              "gsrsearch": f"{termino} filetype:bitmap", "gsrlimit": 12, "prop": "imageinfo",
+              "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1400}
+    r = requests.get("https://commons.wikimedia.org/w/api.php", params=params, headers=UA, timeout=25).json()
+    paginas = sorted(r.get("query", {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
+    for p in paginas:
+        ii = (p.get("imageinfo") or [{}])[0]
+        if ii.get("mime") not in ("image/jpeg", "image/png") or ii.get("width", 0) < 700:
+            continue
+        url = ii.get("thumburl") or ii.get("url")
+        if not url or url in usadas:
+            continue
+        meta = ii.get("extmetadata", {})
+        autor = limpiar_html(meta.get("Artist", {}).get("value", ""))[:40] or "Wikimedia Commons"
+        lic = meta.get("LicenseShortName", {}).get("value", "")
+        return url, f"Foto: {autor} · {lic} · Wikimedia Commons".replace(" ·  ·", " ·")
+    return None
+
+
+def imagenes_noticia(guion, n, carpeta):
+    """Devuelve n tuplas (Image, credito). Usa guion['imagenes'] (terminos de busqueda en orden)."""
+    import requests
+    terminos = [t for t in guion.get("imagenes", []) if t] or guion.get("palabras_clave", [])
+    terminos = terminos + ["football stadium", "football match crowd", "soccer ball grass"]
+    res, usadas = [], set()
+    for t in terminos:
+        if len(res) >= n:
+            break
         try:
-            r = requests.get("https://api.pexels.com/v1/search",
-                             params={"query": q, "orientation": "portrait", "per_page": 1},
-                             headers={"Authorization": key}, timeout=20).json()
-            url = r["photos"][0]["src"]["large2x"]
-            dst = carpeta / f"img{i}.jpg"
-            dst.write_bytes(requests.get(url, timeout=30).content)
-            rutas.append(dst)
+            hit = buscar_commons(t, usadas)
+            if not hit:
+                print("Sin imagen para:", t)
+                continue
+            url, cred = hit
+            dst = carpeta / f"img{len(res)}.jpg"
+            dst.write_bytes(requests.get(url, headers=UA, timeout=40).content)
+            res.append((Image.open(dst).convert("RGB"), cred))
+            usadas.add(url)
+            print("Imagen", len(res), "->", t)
         except Exception as e:
-            print("Sin imagen para", q, e)
-    return rutas
+            print("Error buscando", t, e)
+    if not res:
+        res = [(Image.new("RGB", (1200, 900), "#065f46"), "")]
+    while len(res) < n:                 # si faltan, se repiten en orden
+        res.append(res[len(res) % max(1, len(res))])
+    return res[:n]
 
 
-def ajustar(img, w, h):
-    img = img.convert("RGB")
+def cubrir(img, w, h):
     r = max(w / img.width, h / img.height)
-    img = img.resize((int(img.width * r) + 1, int(img.height * r) + 1))
-    x, y = (img.width - w) // 2, (img.height - h) // 2
+    img = img.resize((math.ceil(img.width * r), math.ceil(img.height * r)), Image.LANCZOS)
+    x, y = (img.width - w) // 2, max(0, int((img.height - h) * 0.3))  # sesgo hacia arriba (caras)
     return img.crop((x, y, x + w, y + h))
 
 
-# ---------- 4. Avatar ----------
+# ---------- 4. Musica sin copyright (generada aqui mismo) ----------
+def musica_fondo(dur, salida):
+    """Usa una pista de musica/ si existe; si no, compone una base deportiva original con numpy."""
+    pistas = sorted(p for p in (RAIZ / "musica").glob("*") if p.suffix.lower() in AUDIO_EXT)
+    if pistas:
+        elegida = random.choice(pistas)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", str(elegida),
+                        "-t", f"{dur + 1:.2f}", "-ac", "2", "-ar", "44100", str(salida)], check=True)
+        print("Musica:", elegida.name)
+        return
+    sr, bpm = 44100, 118
+    beat = 60 / bpm
+    n = int((dur + 1.5) * sr)
+    t = np.arange(n) / sr
+    out = np.zeros(n, dtype=np.float32)
+    acordes = [(57, 60, 64), (53, 57, 60), (48, 52, 55), (55, 59, 62)]   # Am F C G
+    hz = lambda m: 440 * 2 ** ((m - 69) / 12)
+    total_beats = int((dur + 1.5) / beat)
+    rng = np.random.default_rng(11)
+    for b in range(total_beats):
+        i0 = int(b * beat * sr)
+        # bombo en cada tiempo
+        L = int(0.25 * sr)
+        tt = np.arange(min(L, n - i0)) / sr
+        out[i0:i0 + len(tt)] += 0.55 * np.sin(2 * np.pi * (50 + 90 * np.exp(-tt * 30)) * tt) * np.exp(-tt * 9)
+        # palmada en 2 y 4
+        if b % 2 == 1:
+            L = int(0.18 * sr)
+            tt = np.arange(min(L, n - i0)) / sr
+            out[i0:i0 + len(tt)] += 0.18 * rng.standard_normal(len(tt)) * np.exp(-tt * 22)
+        # charles en corcheas
+        for k in (0, 0.5):
+            j = int((b + k) * beat * sr)
+            L = int(0.05 * sr)
+            if j + L < n:
+                out[j:j + L] += 0.06 * rng.standard_normal(L) * np.exp(-np.arange(L) / sr * 80)
+    compas = 4 * beat
+    for c in range(int((dur + 1.5) / compas) + 1):
+        a = acordes[c % 4]
+        i0, i1 = int(c * compas * sr), min(n, int((c + 1) * compas * sr))
+        tt = t[i0:i1] - t[i0]
+        env = np.minimum(1, tt * 4) * np.minimum(1, (compas - tt) * 4)
+        pad = sum(np.sin(2 * np.pi * hz(m) * tt) + 0.3 * np.sin(2 * np.pi * hz(m + 12) * tt) for m in a)
+        bajo = np.sign(np.sin(2 * np.pi * hz(a[0] - 24) * tt)) * 0.5 + np.sin(2 * np.pi * hz(a[0] - 24) * tt)
+        out[i0:i1] += env * (0.035 * pad + 0.09 * bajo * (np.sin(np.pi * 2 * tt / beat) > -0.2))
+    fade = int(1.2 * sr)
+    out[:fade] *= np.linspace(0, 1, fade)
+    out[-fade:] *= np.linspace(1, 0, fade)
+    out = (out / (np.abs(out).max() or 1) * 0.8 * 32767).astype(np.int16)
+    with wave.open(str(salida), "w") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(out.tobytes())
+    print("Musica: base original generada (sin copyright)")
+
+
+# ---------- 5. Avatar pequeno ----------
 def avatar_por_defecto(boca_abierta):
-    a = Image.new("RGBA", (520, 520), (0, 0, 0, 0))
+    a = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
     d = ImageDraw.Draw(a)
-    d.ellipse((20, 20, 500, 500), fill="#f2c9a0", outline="#1f2937", width=10)
-    d.ellipse((150, 180, 200, 240), fill="#1f2937")
-    d.ellipse((320, 180, 370, 240), fill="#1f2937")
+    d.ellipse((60, 40, 452, 470), fill="#f2c9a0")
+    d.ellipse((170, 190, 220, 250), fill="#1f2937"); d.ellipse((292, 190, 342, 250), fill="#1f2937")
     if boca_abierta:
-        d.ellipse((200, 320, 320, 420), fill="#7f1d1d", outline="#1f2937", width=8)
+        d.ellipse((205, 320, 307, 410), fill="#7f1d1d")
     else:
-        d.arc((190, 300, 330, 390), 20, 160, fill="#1f2937", width=10)
+        d.arc((195, 300, 317, 380), 20, 160, fill="#1f2937", width=10)
     return a
 
 
-def recortar_circulo(img):
-    """Si la imagen no tiene fondo transparente, la recorta en circulo con borde."""
+def avatar_circular(img, tam, marca):
+    """Recorta el avatar en circulo con fondo y anillo del color del canal."""
+    img = img.convert("RGBA")
     lado = min(img.size)
     img = img.crop(((img.width - lado) // 2, (img.height - lado) // 2,
-                    (img.width + lado) // 2, (img.height + lado) // 2)).resize((520, 520))
-    masc = Image.new("L", (520, 520), 0)
-    ImageDraw.Draw(masc).ellipse((8, 8, 512, 512), fill=255)
-    out = Image.new("RGBA", (520, 520), (0, 0, 0, 0))
-    ImageDraw.Draw(out).ellipse((0, 0, 519, 519), fill="#ffffff")
-    out.paste(img.convert("RGB"), (0, 0), masc)
+                    (img.width + lado) // 2, (img.height + lado) // 2)).resize((tam, tam), Image.LANCZOS)
+    base = Image.new("RGBA", (tam, tam), marca["color_primario"])
+    base.alpha_composite(img)
+    masc = Image.new("L", (tam, tam), 0)
+    ImageDraw.Draw(masc).ellipse((0, 0, tam - 1, tam - 1), fill=255)
+    borde = 10
+    out = Image.new("RGBA", (tam + 2 * borde, tam + 2 * borde), (0, 0, 0, 0))
+    ImageDraw.Draw(out).ellipse((0, 0, out.width - 1, out.height - 1), fill=marca["color_resaltado"])
+    out.paste(base, (borde, borde), masc)
     return out
 
 
-def abrir_avatar(p):
-    img = Image.open(p)
-    tiene_alfa = img.mode in ("RGBA", "LA") and img.getextrema()[-1][0] < 250
-    img = img.convert("RGBA") if tiene_alfa else recortar_circulo(img)
-    img.thumbnail((620, 620))
-    return img
-
-
-def cargar_avatar():
-    """assets/: un archivo con 'cerrada' y otro con 'abierta' en el nombre; si no, las 2 primeras imagenes
-    en orden alfabetico (1a = boca cerrada, 2a = boca abierta). Con una sola imagen, se usa para ambas."""
+def cargar_avatar(marca, tam=210):
     imgs = sorted(p for p in (RAIZ / "assets").glob("*") if p.suffix.lower() in IMG_EXT)
     cerr = next((p for p in imgs if "cerrad" in p.name.lower()), imgs[0] if imgs else None)
-    abie = next((p for p in imgs if "abiert" in p.name.lower()),
-                next((p for p in imgs if p != cerr), cerr))
+    abie = next((p for p in imgs if "abiert" in p.name.lower()), next((p for p in imgs if p != cerr), cerr))
     if not cerr:
-        return {"cerrada": avatar_por_defecto(False), "abierta": avatar_por_defecto(True)}
-    print("Avatar:", cerr.name, "/", abie.name)
-    return {"cerrada": abrir_avatar(cerr), "abierta": abrir_avatar(abie)}
+        a, b = avatar_por_defecto(False), avatar_por_defecto(True)
+    else:
+        print("Avatar:", cerr.name, "/", abie.name)
+        a, b = Image.open(cerr), Image.open(abie)
+    return {"cerrada": avatar_circular(a, tam, marca), "abierta": avatar_circular(b, tam, marca)}
 
 
-# ---------- 5. Texto ----------
+# ---------- 6. Utilidades de dibujo ----------
+def hex_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
 def envolver(draw, texto, fuente, ancho):
     lineas, linea = [], ""
     for p in texto.split():
@@ -179,136 +297,205 @@ def envolver(draw, texto, fuente, ancho):
         if draw.textlength(prueba, font=fuente) <= ancho:
             linea = prueba
         else:
-            lineas.append(linea)
+            if linea:
+                lineas.append(linea)
             linea = p
     if linea:
         lineas.append(linea)
     return lineas
 
 
-def hex_rgb(h):
-    h = h.lstrip("#")
-    return np.array([int(h[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32)
+def esquinas_redondas(img, r):
+    masc = Image.new("L", img.size, 0)
+    ImageDraw.Draw(masc).rounded_rectangle((0, 0, img.width - 1, img.height - 1), r, fill=255)
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    out.paste(img, (0, 0), masc)
+    return out
 
 
-def fondo_animado(marca):
-    """Degradado de 3 colores (alto 2H) con brillo radial y lineas diagonales sutiles."""
-    c1, c2, c3 = (hex_rgb(marca[k]) for k in ("fondo_1", "fondo_2", "fondo_3"))
-    y = np.linspace(0, 1, 2 * H)[:, None, None]
-    tri = np.abs(((y * 2) % 2) - 1)  # 0..1..0 para que el ciclo no tenga cortes
-    grad = np.where(tri < 0.5, c1 + (c2 - c1) * (tri / 0.5), c2 + (c3 - c2) * ((tri - 0.5) / 0.5))
-    img = np.broadcast_to(grad, (2 * H, W, 3)).copy()
-    yy, xx = np.mgrid[0:2 * H, 0:W]
-    lineas = ((xx + yy) // 18) % 9 == 0
-    img[lineas] *= 1.12
-    cx = (xx - W / 2) / W
-    vin = 1 - 0.45 * np.clip(cx ** 2 * 2.2, 0, 1)
-    img *= vin[..., None]
-    return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert("RGBA")
-
-
-def armar_texto(guion):
-    """El guion trae gancho, desarrollo y cierre; se unen en un solo texto para la voz."""
-    if "texto" not in guion:
-        guion["texto"] = " ".join(guion[k].strip() for k in ("gancho", "desarrollo", "cierre"))
-    n = len(guion["texto"].split())
-    if not 70 <= n <= 115:
-        print(f"AVISO: el guion tiene {n} palabras; para 30-45 s lo ideal es 75-110")
-    return guion
+def sombra(tam, r, radio=30, alfa=160):
+    s = Image.new("RGBA", (tam[0] + 4 * radio, tam[1] + 4 * radio), (0, 0, 0, 0))
+    ImageDraw.Draw(s).rounded_rectangle((2 * radio, 2 * radio, 2 * radio + tam[0], 2 * radio + tam[1]), r, fill=(0, 0, 0, alfa))
+    return s.filter(ImageFilter.GaussianBlur(radio))
 
 
 def leer_volumen(wav_path):
     with wave.open(str(wav_path)) as w:
-        sr, n, sw = w.getframerate(), w.getnframes(), w.getsampwidth()
-        datos = np.frombuffer(w.readframes(n), dtype=np.int16 if sw == 2 else np.int32).astype(np.float32)
+        sr, n = w.getframerate(), w.getnframes()
+        datos = np.frombuffer(w.readframes(n), dtype=np.int16).astype(np.float32)
         if w.getnchannels() > 1:
             datos = datos.reshape(-1, w.getnchannels()).mean(axis=1)
-    por_frame = sr // FPS
-    total = len(datos) // por_frame
-    rms = np.array([np.sqrt(np.mean(datos[i * por_frame:(i + 1) * por_frame] ** 2)) for i in range(total)])
+    por = sr // FPS
+    total = len(datos) // por
+    rms = np.array([np.sqrt(np.mean(datos[i * por:(i + 1) * por] ** 2)) for i in range(total)])
     return rms / (rms.max() or 1), len(datos) / sr
+
+
+# ---------- 7. Render ----------
+# Disposicion (1080x1920). Todo lo importante queda entre y=80 y y=1450 y lejos del borde
+# derecho, porque abajo y a la derecha YouTube/TikTok/Instagram ponen sus botones y textos.
+TOP_Y = 90                      # cabecera: marca + titular
+IMG_X, IMG_Y, IMG_W, IMG_H = 60, 430, 960, 720     # imagen principal (se ajusta bajo el titular)
+AV_TAM = 210                    # avatar pequeno, montado en la esquina inferior izquierda de la imagen
+
+
+def capa_fija(guion, marca):
+    """Cabecera (marca + titular) y placa del avatar: no cambian durante el video."""
+    capa = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(capa)
+    ac, prim = marca["color_resaltado"], marca["color_primario"]
+    # pastilla de marca con balon
+    nombre = marca["nombre_canal"].upper()
+    f_m = F(40)
+    ancho = int(d.textlength(nombre, font=f_m)) + 110
+    d.rounded_rectangle((60, TOP_Y, 60 + ancho, TOP_Y + 70), 35, fill=prim)
+    cx, cy, r = 60 + 38, TOP_Y + 35, 22
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill="#ffffff")
+    pent = [(cx + 9 * math.cos(math.radians(a - 90)), cy + 9 * math.sin(math.radians(a - 90))) for a in range(0, 360, 72)]
+    d.polygon(pent, fill="#111111")
+    for a in range(0, 360, 72):
+        x0, y0 = cx + 9 * math.cos(math.radians(a - 90)), cy + 9 * math.sin(math.radians(a - 90))
+        d.line((x0, y0, cx + 21 * math.cos(math.radians(a - 90)), cy + 21 * math.sin(math.radians(a - 90))), fill="#111111", width=3)
+    d.text((60 + 75, TOP_Y + 13), nombre, font=f_m, fill="#ffffff")
+    # titular
+    f_t = F(64)
+    lineas = envolver(d, guion["titular"].upper(), f_t, W - 170)[:3]
+    while len(envolver(d, guion["titular"].upper(), f_t, W - 170)) > 3 and f_t.size > 44:
+        f_t = F(f_t.size - 4)
+        lineas = envolver(d, guion["titular"].upper(), f_t, W - 170)[:3]
+    alto_l = f_t.size + 14
+    y0 = TOP_Y + 100
+    caja_h = 40 + alto_l * len(lineas)
+    d.rounded_rectangle((60, y0, W - 60, y0 + caja_h), 24, fill=(0, 0, 0, 170))
+    d.rounded_rectangle((60, y0, 74, y0 + caja_h), 7, fill=ac)
+    for i, l in enumerate(lineas):
+        d.text((100, y0 + 20 + i * alto_l), l, font=f_t, fill="#ffffff")
+    return capa, y0 + caja_h
 
 
 def render(guion, wav_path, salida_mp4, tmp):
     marca = cargar_marca()
+    ac = marca["color_resaltado"]
     vol, dur = leer_volumen(wav_path)
     palabras = tiempos_palabras(wav_path, guion["texto"], dur)
+    fin_gancho = 0
     if guion.get("gancho"):
-        n_g = len(guion["gancho"].split())
-        guion["_fin_gancho"] = palabras[min(n_g, len(palabras)) - 1][2]
-    if dur > 46:
-        print(f"AVISO: el video dura {dur:.0f} s (meta 30-45 s)")
-    fotos = [ajustar(Image.open(p), W, H) for p in imagenes_apoyo(guion.get("palabras_clave", []), tmp)]
-    avatar = cargar_avatar()
-    f_tit = ImageFont.truetype(FUENTE, 62)
-    f_sub = ImageFont.truetype(FUENTE, 84)
-    f_can = ImageFont.truetype(FUENTE, 40)
+        fin_gancho = palabras[min(len(guion["gancho"].split()), len(palabras)) - 1][2]
 
-    fondo_alto = fondo_animado(marca)
-    oscuro = Image.new("RGBA", (W, H), (0, 0, 0, 120))
-    total = int(dur * FPS)
+    n_img = max(1, math.ceil(dur / SEG_IMAGEN))
+    imgs = imagenes_noticia(guion, n_img, tmp)
+    tarjetas, fondos, creditos = [], [], []
+    for img, cred in imgs:
+        g = cubrir(img, int(IMG_W * 1.1), int(IMG_H * 1.1))       # margen para el zoom
+        tarjetas.append(g)
+        f = cubrir(img, W // 4, H // 4).filter(ImageFilter.GaussianBlur(6)).resize((W, H), Image.BILINEAR)
+        f = Image.blend(f, Image.new("RGB", (W, H), marca["color_oscuro"]), 0.62)
+        fondos.append(f.convert("RGBA"))
+        creditos.append(cred)
 
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-           "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-i", str(wav_path),
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", str(salida_mp4)]
+    fija, fin_cabecera = capa_fija(guion, marca)
+    global IMG_Y
+    IMG_Y = max(IMG_Y, fin_cabecera + 40)
+    sombra_img = sombra((IMG_W, IMG_H), 34)
+    av_x, av_y = 28, IMG_Y + IMG_H - AV_TAM + 10      # sobre la esquina inferior izquierda de la imagen
+    sub_y = IMG_Y + IMG_H + 95
+    avatar = cargar_avatar(marca)
+    f_sub, f_cred = F(80), F(22, False)
+    grupos = [palabras[i:i + 3] for i in range(0, len(palabras), 3)]
+
+    musica = tmp / "musica.wav"
+    musica_fondo(dur, musica)
+    cmd = ["ffmpeg", "-y", "-loglevel", "error",
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
+           "-i", str(wav_path), "-i", str(musica),
+           "-filter_complex",
+           # musica baja (-20 dB aprox) y se agacha aun mas cuando hablas (sidechain), voz intacta
+           "[1:a]aresample=44100,aformat=channel_layouts=stereo,asplit=2[voz][llave];"
+           "[2:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.13[mus];"
+           "[mus][llave]sidechaincompress=threshold=0.02:ratio=6:attack=15:release=350[musd];"
+           "[voz][musd]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]",
+           "-map", "0:v", "-map", "[a]",
+           "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
+           "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(salida_mp4)]
     ff = subprocess.Popen(cmd, stdin=subprocess.PIPE)
 
-    # titular (fijo)
-    capa_tit = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(capa_tit)
-    lineas = envolver(d, guion["titular"].upper(), f_tit, W - 120)[:3]
-    alto = 60 + 78 * len(lineas)
-    d.rectangle((0, 110, W, 110 + alto), fill=marca["color_barra"])
-    for i, l in enumerate(lineas):
-        d.text((60, 140 + 78 * i), l, font=f_tit, fill=marca["color_texto"])
-    d.text((60, H - 90), marca["nombre_canal"], font=f_can, fill=marca["color_texto"])
-
-    grupos = [palabras[i:i + 3] for i in range(0, len(palabras), 3)]
+    total = int(dur * FPS)
+    TRANS = 0.45
     for fr in range(total):
         t = fr / FPS
-        if fotos:
-            idx = min(int(t / (dur / len(fotos))), len(fotos) - 1)
-            img = fotos[idx].copy()
-            # zoom lento tipo Ken Burns
-            z = 1 + 0.06 * ((t % (dur / len(fotos))) / (dur / len(fotos)))
-            cw, ch = int(W / z), int(H / z)
-            img = img.crop(((W - cw) // 2, (H - ch) // 2, (W + cw) // 2, (H + ch) // 2)).resize((W, H))
-            marco = Image.alpha_composite(img.convert("RGBA"), oscuro)
-        else:
-            y0 = int((H * (1 + np.sin(2 * np.pi * t / 20))) / 2)  # vaiven lento
-            marco = fondo_alto.crop((0, y0, W, y0 + H))
-        if t < guion.get("_fin_gancho", 0) and int(t * 2) % 2 == 0:
-            d = ImageDraw.Draw(marco)
-            d.ellipse((60, 60, 92, 92), fill="#ef4444")
-            d.text((106, 52), "AHORA", font=f_can, fill="#ffffff")
-        marco = Image.alpha_composite(marco, capa_tit)
+        idx = min(int(t / SEG_IMAGEN), n_img - 1)
+        local = t - idx * SEG_IMAGEN
+        marco = fondos[idx].copy()
 
-        # avatar que habla
-        v = vol[min(fr, len(vol) - 1)] if len(vol) else 0
-        av = avatar["abierta" if v > 0.18 else "cerrada"]
-        salto = int(v * 14)
-        marco.alpha_composite(av, ((W - av.width) // 2, H - av.height - 560 - salto))
+        # tarjeta de imagen con zoom lento (Ken Burns) y entrada suave
+        z = 1.0 + 0.08 * (local / SEG_IMAGEN)
+        g = tarjetas[idx]
+        cw, ch = int(g.width / 1.1 / z * 1.0), int(g.height / 1.1 / z * 1.0)
+        ox, oy = (g.width - cw) // 2, (g.height - ch) // 2
+        tarjeta = g.crop((ox, oy, ox + cw, oy + ch)).resize((IMG_W, IMG_H), Image.BILINEAR)
+        tarjeta = esquinas_redondas(tarjeta, 34)
+        entrada = min(1.0, local / TRANS) if idx > 0 else 1.0
+        dy = int((1 - entrada) * 60)
+        marco.alpha_composite(sombra_img, (IMG_X - 60, IMG_Y - 60 + 18 + dy))
+        if entrada < 1:
+            tarjeta.putalpha(tarjeta.getchannel("A").point(lambda a: int(a * entrada)))
+        marco.alpha_composite(tarjeta, (IMG_X, IMG_Y + dy))
+        d = ImageDraw.Draw(marco)
+        d.rounded_rectangle((IMG_X, IMG_Y + dy, IMG_X + IMG_W, IMG_Y + IMG_H + dy), 34, outline=ac, width=5)
+        if creditos[idx]:
+            cr = creditos[idx][:70]
+            d.text((IMG_X + IMG_W - 18 - d.textlength(cr, font=f_cred), IMG_Y + 16 + dy), cr, font=f_cred,
+                   fill=(255, 255, 255, 210), stroke_width=2, stroke_fill="#000000")
+        # puntos de progreso de imagenes
+        for k in range(n_img):
+            x = W // 2 + 60 - (n_img * 26) // 2 + k * 26
+            d.ellipse((x, IMG_Y + IMG_H + 22, x + 14, IMG_Y + IMG_H + 36), fill=ac if k == idx else (255, 255, 255, 90))
 
-        # subtitulos (grupo de 3 palabras, resaltando la actual)
-        grupo = next((g for g in grupos if g[0][1] <= t <= g[-1][2] + 0.15), None)
+        marco.alpha_composite(fija)
+
+        # barra de progreso superior
+        d.rectangle((0, 0, int(W * t / dur), 10), fill=ac)
+        # etiqueta EN VIVO durante el gancho
+        if t < fin_gancho:
+            f_v = F(28)
+            x0 = W - 60 - 70 - int(d.textlength("ÚLTIMA HORA", font=f_v))
+            d.rounded_rectangle((x0, TOP_Y + 8, W - 60, TOP_Y + 62), 27, fill="#dc2626")
+            if int(t * 2) % 2 == 0:
+                d.ellipse((x0 + 20, TOP_Y + 25, x0 + 40, TOP_Y + 45), fill="#ffffff")
+            d.text((x0 + 52, TOP_Y + 18), "ÚLTIMA HORA", font=f_v, fill="#ffffff")
+
+        # subtitulos: 3 palabras, la actual resaltada
+        grupo = next((gr for gr in grupos if gr[0][1] - 0.05 <= t <= gr[-1][2] + 0.15), None)
         if grupo:
-            d = ImageDraw.Draw(marco)
             texto = " ".join(p[0] for p in grupo).upper()
             fs = f_sub
-            while d.textlength(texto + " ", font=fs) > W - 100 and fs.size > 40:
-                fs = ImageFont.truetype(FUENTE, fs.size - 6)
+            while d.textlength(texto + " ", font=fs) > W - 100 and fs.size > 44:
+                fs = F(fs.size - 6)
             x = (W - d.textlength(texto, font=fs)) / 2
-            y = H - 470
             for p, ini, fin in grupo:
                 pal = p.upper() + " "
-                color = marca["color_resaltado"] if ini <= t <= fin + 0.05 else marca["color_texto"]
-                d.text((x, y), pal, font=fs, fill=color, stroke_width=6, stroke_fill="#000000")
+                color = ac if ini - 0.03 <= t <= fin + 0.05 else "#ffffff"
+                d.text((x, sub_y), pal, font=fs, fill=color, stroke_width=7, stroke_fill="#000000")
                 x += d.textlength(pal, font=fs)
+
+        # avatar pequeno que habla
+        v = vol[min(fr, len(vol) - 1)] if len(vol) else 0
+        av = avatar["abierta" if v > 0.18 else "cerrada"]
+        marco.alpha_composite(av, (av_x, av_y - int(v * 10)))
 
         ff.stdin.write(marco.convert("RGB").tobytes())
     ff.stdin.close()
-    ff.wait()
+    if ff.wait() != 0:
+        raise SystemExit("ffmpeg fallo al armar el video")
+
+
+def armar_texto(guion):
+    if "texto" not in guion:
+        guion["texto"] = " ".join(guion[k].strip() for k in ("gancho", "desarrollo", "cierre"))
+    n = len(guion["texto"].split())
+    if not 75 <= n <= 115:
+        print(f"AVISO: el guion tiene {n} palabras; para 30-45 s lo ideal es 80-110")
+    return guion
 
 
 def main():
@@ -319,7 +506,7 @@ def main():
     tmp.mkdir(exist_ok=True)
     wav = tmp / "voz.wav"
     if os.environ.get("AUDIO_DE_PRUEBA"):
-        wav = Path(os.environ["AUDIO_DE_PRUEBA"])
+        normalizar_y_ajustar(os.environ["AUDIO_DE_PRUEBA"], wav)
     else:
         generar_voz(guion["texto"], wav)
     mp4 = carpeta_salida / f"{guion['id']}.mp4"
