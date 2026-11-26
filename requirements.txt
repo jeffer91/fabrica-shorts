@@ -1,0 +1,7 @@
+torch
+torchaudio
+chatterbox-tts
+faster-whisper
+pillow
+numpy
+requests
