@@ -1,1 +1,9 @@
-{"id":"prueba","titular":"Ecuador: lo que pasó hoy en 30 segundos","texto":"Hoy te cuento la noticia más importante del día. El gobierno anunció nuevas medidas y aquí te explico qué significan para ti. Sígueme para más noticias rápidas.","palabras_clave":["Quito","noticias"],"fuente":"prueba"}
+{
+  "id": "prueba",
+  "titular": "Las noticias falsas viajan más rápido",
+  "gancho": "Una mentira tiene setenta por ciento más probabilidades de ser compartida que una verdad.",
+  "desarrollo": "Eso encontró un estudio del MIT publicado en la revista Science, que analizó más de cien mil historias en Twitter durante once años. Las noticias falsas llegaban a más personas y mucho más rápido, y lo curioso es que no eran los bots los culpables, sino nosotros, porque lo sorprendente nos provoca compartir sin revisar.",
+  "cierre": "Así que antes de reenviar, busca la fuente. Y si quieres noticias verificadas en menos de un minuto, sígueme.",
+  "palabras_clave": ["smartphone social media", "news"],
+  "fuente": "https://www.science.org/doi/10.1126/science.aap9559"
+}

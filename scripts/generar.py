@@ -15,7 +15,7 @@ FUENTE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
 def cargar_marca():
     p = RAIZ / "marca.json"
-    base = {"color_fondo": "#0f172a", "color_barra": "#dc2626", "color_texto": "#ffffff",
+    base = {"fondo_1": "#0b1026", "fondo_2": "#3b0d4f", "fondo_3": "#0e3a5c", "color_barra": "#dc2626", "color_texto": "#ffffff",
             "color_resaltado": "#facc15", "nombre_canal": "Mi canal de noticias"}
     if p.exists():
         base.update(json.loads(p.read_text(encoding="utf-8")))
@@ -139,6 +139,37 @@ def envolver(draw, texto, fuente, ancho):
     return lineas
 
 
+def hex_rgb(h):
+    h = h.lstrip("#")
+    return np.array([int(h[i:i + 2], 16) for i in (0, 2, 4)], dtype=np.float32)
+
+
+def fondo_animado(marca):
+    """Degradado de 3 colores (alto 2H) con brillo radial y lineas diagonales sutiles."""
+    c1, c2, c3 = (hex_rgb(marca[k]) for k in ("fondo_1", "fondo_2", "fondo_3"))
+    y = np.linspace(0, 1, 2 * H)[:, None, None]
+    tri = np.abs(((y * 2) % 2) - 1)  # 0..1..0 para que el ciclo no tenga cortes
+    grad = np.where(tri < 0.5, c1 + (c2 - c1) * (tri / 0.5), c2 + (c3 - c2) * ((tri - 0.5) / 0.5))
+    img = np.broadcast_to(grad, (2 * H, W, 3)).copy()
+    yy, xx = np.mgrid[0:2 * H, 0:W]
+    lineas = ((xx + yy) // 18) % 9 == 0
+    img[lineas] *= 1.12
+    cx = (xx - W / 2) / W
+    vin = 1 - 0.45 * np.clip(cx ** 2 * 2.2, 0, 1)
+    img *= vin[..., None]
+    return Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).convert("RGBA")
+
+
+def armar_texto(guion):
+    """El guion trae gancho, desarrollo y cierre; se unen en un solo texto para la voz."""
+    if "texto" not in guion:
+        guion["texto"] = " ".join(guion[k].strip() for k in ("gancho", "desarrollo", "cierre"))
+    n = len(guion["texto"].split())
+    if not 70 <= n <= 115:
+        print(f"AVISO: el guion tiene {n} palabras; para 30-45 s lo ideal es 75-110")
+    return guion
+
+
 def leer_volumen(wav_path):
     with wave.open(str(wav_path)) as w:
         sr, n, sw = w.getframerate(), w.getnframes(), w.getsampwidth()
@@ -155,13 +186,18 @@ def render(guion, wav_path, salida_mp4, tmp):
     marca = cargar_marca()
     vol, dur = leer_volumen(wav_path)
     palabras = tiempos_palabras(wav_path, guion["texto"], dur)
+    if guion.get("gancho"):
+        n_g = len(guion["gancho"].split())
+        guion["_fin_gancho"] = palabras[min(n_g, len(palabras)) - 1][2]
+    if dur > 46:
+        print(f"AVISO: el video dura {dur:.0f} s (meta 30-45 s)")
     fotos = [ajustar(Image.open(p), W, H) for p in imagenes_apoyo(guion.get("palabras_clave", []), tmp)]
     avatar = cargar_avatar()
     f_tit = ImageFont.truetype(FUENTE, 62)
     f_sub = ImageFont.truetype(FUENTE, 84)
     f_can = ImageFont.truetype(FUENTE, 40)
 
-    fondo_base = Image.new("RGB", (W, H), marca["color_fondo"])
+    fondo_alto = fondo_animado(marca)
     oscuro = Image.new("RGBA", (W, H), (0, 0, 0, 120))
     total = int(dur * FPS)
 
@@ -193,7 +229,12 @@ def render(guion, wav_path, salida_mp4, tmp):
             img = img.crop(((W - cw) // 2, (H - ch) // 2, (W + cw) // 2, (H + ch) // 2)).resize((W, H))
             marco = Image.alpha_composite(img.convert("RGBA"), oscuro)
         else:
-            marco = fondo_base.convert("RGBA")
+            y0 = int((H * (1 + np.sin(2 * np.pi * t / 20))) / 2)  # vaiven lento
+            marco = fondo_alto.crop((0, y0, W, y0 + H))
+        if t < guion.get("_fin_gancho", 0) and int(t * 2) % 2 == 0:
+            d = ImageDraw.Draw(marco)
+            d.ellipse((60, 60, 92, 92), fill="#ef4444")
+            d.text((106, 52), "AHORA", font=f_can, fill="#ffffff")
         marco = Image.alpha_composite(marco, capa_tit)
 
         # avatar que habla
@@ -225,7 +266,7 @@ def render(guion, wav_path, salida_mp4, tmp):
 
 def main():
     guion_path, carpeta_salida = Path(sys.argv[1]), Path(sys.argv[2])
-    guion = json.loads(guion_path.read_text(encoding="utf-8"))
+    guion = armar_texto(json.loads(guion_path.read_text(encoding="utf-8")))
     carpeta_salida.mkdir(parents=True, exist_ok=True)
     tmp = carpeta_salida / "tmp"
     tmp.mkdir(exist_ok=True)

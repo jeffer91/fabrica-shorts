@@ -1,6 +1,8 @@
 {
   "nombre_canal": "Mi canal de noticias",
-  "color_fondo": "#0f172a",
+  "fondo_1": "#0b1026",
+  "fondo_2": "#3b0d4f",
+  "fondo_3": "#0e3a5c",
   "color_barra": "#dc2626",
   "color_texto": "#ffffff",
   "color_resaltado": "#facc15"

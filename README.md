@@ -12,12 +12,14 @@ Convierte un guion en un short vertical (1080x1920) con tu voz clonada, tu avata
 3. El video se sube a Supabase Storage (bucket público `shorts`) y su enlace queda en `salidas/<id>.json`.
 4. Claude toma ese enlace y lo programa en Metricool.
 
-## Formato del guion
+## Formato del guion (75-110 palabras = 30-45 s)
 ```json
 {
   "id": "2026-11-26-01",
   "titular": "Titular corto en pantalla",
-  "texto": "Lo que dice la voz, 30 a 45 segundos.",
+  "gancho": "1 frase, 0-3 s: dato, pregunta o anecdota que detiene el scroll.",
+  "desarrollo": "Los hechos verificados, 20-35 s.",
+  "cierre": "Conclusion + llamado a seguir, 5 s.",
   "palabras_clave": ["imagen 1", "imagen 2"],
   "fuente": "https://enlace-de-la-noticia"
 }
