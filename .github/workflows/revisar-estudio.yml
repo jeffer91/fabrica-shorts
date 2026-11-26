@@ -1,0 +1,8 @@
+name: Revisar estudio
+on: workflow_dispatch
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: curl -s "https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio?k=0YtogzqxG1IbA8KKuOsmMh1f&accion=estado"; echo; curl -s -o /dev/null -w "sin clave: %{http_code}\n" "https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio?k=mal"

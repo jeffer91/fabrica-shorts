@@ -45,28 +45,11 @@
 <body>
 <main>
   <h1>🎬 Estudio de tu fábrica de shorts</h1>
-  <p class="sub">Sube tu voz y tu avatar. Todo se guarda directo en tu repositorio <b>fabrica-shorts</b>.</p>
+  <p class="sub">Sube tu voz y tu avatar. Graba, sube y listo. Todo se guarda solo en tu fábrica.</p>
 
-  <!-- 0. Conexion -->
-  <section class="card" id="c0">
-    <h2><span class="num">0</span> Conectar con GitHub <span class="estado" id="e0">Sin conectar</span></h2>
-    <div id="sinToken">
-      <p class="tip">Solo una vez. Crea una llave que únicamente puede tocar este repositorio:</p>
-      <ol class="tip">
-        <li>Abre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">crear llave en GitHub</a>.</li>
-        <li><b>Token name:</b> estudio · <b>Expiration:</b> 1 año.</li>
-        <li><b>Repository access:</b> Only select repositories → <b>fabrica-shorts</b>.</li>
-        <li><b>Permissions → Contents:</b> Read and write.</li>
-        <li>Toca <b>Generate token</b>, copia la llave y pégala aquí.</li>
-      </ol>
-      <input type="password" id="token" placeholder="github_pat_...">
-      <div class="fila"><button onclick="guardarToken()">Conectar</button></div>
-      <p class="tip">La llave se guarda solo en este celular. No se envía a nadie más que a GitHub.</p>
-    </div>
-    <div id="conToken" hidden>
-      <p class="tip">✅ Conectado a <b>jeffer91/fabrica-shorts</b>.</p>
-      <button class="sec" onclick="olvidarToken()">Desconectar este dispositivo</button>
-    </div>
+  <section class="card" id="sinEnlace" hidden>
+    <h2>🔒 Abre el estudio desde tu enlace personal</h2>
+    <p class="tip">Este estudio solo funciona con el enlace privado que te dio Claude. Ábrelo una vez desde ese enlace y este celular lo recordará.</p>
   </section>
 
   <!-- 1. Voz -->
@@ -132,45 +115,37 @@
     <div class="fila"><button onclick="subirMarca()">✅ Guardar canal</button></div>
   </section>
 
-  <!-- 4. Prueba -->
-  <section class="card" id="c4">
-    <h2><span class="num">4</span> Video de prueba</h2>
-    <p class="tip">Genera un short de ejemplo con tu voz y tu avatar. Tarda unos 7 minutos.</p>
-    <div class="fila"><button onclick="probar()">🎬 Generar prueba</button><button class="sec" onclick="cargarVideos()">↻ Ver videos</button></div>
-    <div class="videos" id="videos"></div>
+  <section class="card">
+    <h2><span class="num">4</span> ¡Listo!</h2>
+    <p class="tip">Cuando los pasos 1, 2 y 3 digan <b>Listo ✓</b>, avísale a Claude para generar tu video de prueba con tu voz y tu cara.</p>
   </section>
 </main>
 <div id="log"></div>
 
 <script>
-const REPO = "jeffer91/fabrica-shorts", API = "https://api.github.com/repos/" + REPO + "/contents/";
-let token = "", audioBlob = null, audioExt = "webm", fotos = {cerrada: null, abierta: null};
-try { token = localStorage.getItem("fabrica_token") || ""; } catch (e) {}
+const FN = "https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio";
+let clave = "", audioBlob = null, audioExt = "webm", fotos = {cerrada: null, abierta: null};
+const h = new URLSearchParams(location.hash.slice(1)).get("k");
+try { if (h) localStorage.setItem("fabrica_k", h); clave = h || localStorage.getItem("fabrica_k") || ""; } catch (e) { clave = h || ""; }
+if (h) history.replaceState(null, "", location.pathname);
 
 const $ = id => document.getElementById(id);
 function aviso(t, ms = 3500) { const l = $("log"); l.textContent = t; l.style.display = "block"; clearTimeout(l._t); if (ms) l._t = setTimeout(() => l.style.display = "none", ms); }
 function marcar(n, ok, txt) { const e = $("e" + n); e.textContent = txt || (ok ? "Listo ✓" : "Pendiente"); e.classList.toggle("ok", ok); }
+function sinClave() { if (!clave) { aviso("Abre el estudio desde tu enlace personal"); return true; } return false; }
 
-async function gh(ruta, opts = {}) {
-  const r = await fetch(ruta.startsWith("http") ? ruta : API + ruta, { ...opts, headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", ...(opts.headers || {}) } });
-  if (!r.ok && r.status !== 404) throw new Error("GitHub respondió " + r.status + (r.status === 401 ? " (llave inválida)" : r.status === 403 ? " (la llave no tiene permiso Contents: Read and write)" : ""));
-  return r.status === 404 ? null : r.json();
+async function api(accion, form) {
+  const r = await fetch(FN + "?k=" + encodeURIComponent(clave) + "&accion=" + accion, form ? { method: "POST", body: form } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("Error " + r.status));
+  return j;
 }
-function b64(buf) { let s = "", b = new Uint8Array(buf); for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
-async function escribir(ruta, contenidoB64, msg) {
-  const prev = await gh(ruta);
-  return gh(ruta, { method: "PUT", body: JSON.stringify({ message: msg, content: contenidoB64, sha: prev && prev.sha }) });
+async function subir(tipo, blob, extra = {}) {
+  const f = new FormData(); f.append("tipo", tipo);
+  if (blob) f.append("archivo", blob, tipo);
+  for (const k in extra) f.append(k, extra[k]);
+  return api("subir", f);
 }
-async function borrar(ruta, sha, msg) { return gh(ruta, { method: "DELETE", body: JSON.stringify({ message: msg, sha }) }); }
-function necesitaToken() { if (!token) { aviso("Primero conecta con GitHub (paso 0)"); $("c0").scrollIntoView({behavior:"smooth"}); return true; } return false; }
-
-// ---- 0. token
-async function guardarToken() {
-  token = $("token").value.trim(); if (!token) return;
-  try { await gh("https://api.github.com/repos/" + REPO); localStorage.setItem("fabrica_token", token); aviso("Conectado ✓"); iniciar(); }
-  catch (e) { aviso("No se pudo conectar: " + e.message, 6000); token = ""; }
-}
-function olvidarToken() { try { localStorage.removeItem("fabrica_token"); } catch (e) {} token = ""; iniciar(); }
 
 // ---- 1. voz
 let rec, partes = [], t0, intervalo;
@@ -179,9 +154,10 @@ async function grabar() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     const tipo = ["audio/webm;codecs=opus", "audio/mp4", "audio/ogg"].find(t => MediaRecorder.isTypeSupported(t)) || "";
     rec = new MediaRecorder(stream, tipo ? { mimeType: tipo } : {});
-    audioExt = (rec.mimeType || "audio/webm").includes("mp4") ? "m4a" : rec.mimeType.includes("ogg") ? "ogg" : "webm";
+    const mt = rec.mimeType || "audio/webm";
+    audioExt = mt.includes("mp4") ? "m4a" : mt.includes("ogg") ? "ogg" : "webm";
     partes = []; rec.ondataavailable = e => partes.push(e.data);
-    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); listo(new Blob(partes, { type: rec.mimeType })); };
+    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); listo(new Blob(partes, { type: mt })); };
     rec.start(); t0 = Date.now();
     $("bGrabar").disabled = true; $("bParar").disabled = false; $("reloj").classList.add("rec");
     intervalo = setInterval(tic, 200);
@@ -199,14 +175,10 @@ function parar() { if (rec && rec.state === "recording") rec.stop(); clearInterv
 function listo(blob) { audioBlob = blob; const a = $("escuchar"); a.src = URL.createObjectURL(blob); a.hidden = false; $("bSubirVoz").disabled = false; aviso("Escúchala. Si te gusta, toca Guardar esta voz"); }
 function archivoAudio(inp) { const f = inp.files[0]; if (!f) return; audioExt = (f.name.split(".").pop() || "m4a").toLowerCase(); listo(f); }
 async function subirVoz() {
-  if (necesitaToken() || !audioBlob) return;
+  if (sinClave() || !audioBlob) return;
   $("bSubirVoz").disabled = true; aviso("Subiendo tu voz…", 0);
-  try {
-    const actuales = (await gh("voz")) || [];
-    for (const f of actuales) if (f.type === "file" && f.name !== ".gitkeep") await borrar(f.path, f.sha, "Reemplazar voz");
-    await escribir("voz/mi_voz." + audioExt, b64(await audioBlob.arrayBuffer()), "Subir voz desde el estudio");
-    marcar(1, true); aviso("Voz guardada ✓");
-  } catch (e) { aviso("Error: " + e.message, 7000); }
+  try { await subir("voz", audioBlob, { ext: audioExt }); marcar(1, true); aviso("Voz guardada ✓"); }
+  catch (e) { aviso("Error: " + e.message, 7000); }
   $("bSubirVoz").disabled = false;
 }
 
@@ -232,62 +204,34 @@ function elegirFoto(inp, cual) {
   img.src = URL.createObjectURL(f);
 }
 async function subirAvatar() {
-  if (necesitaToken()) return;
+  if (sinClave()) return;
   $("bSubirAv").disabled = true; aviso("Subiendo avatar…", 0);
-  try {
-    const actuales = (await gh("assets")) || [];
-    for (const f of actuales) if (f.type === "file" && /\.(png|jpe?g|webp)$/i.test(f.name)) await borrar(f.path, f.sha, "Reemplazar avatar");
-    await escribir("assets/avatar_cerrada.png", b64(await fotos.cerrada.arrayBuffer()), "Avatar boca cerrada");
-    await escribir("assets/avatar_abierta.png", b64(await fotos.abierta.arrayBuffer()), "Avatar boca abierta");
-    marcar(2, true); aviso("Avatar guardado ✓");
-  } catch (e) { aviso("Error: " + e.message, 7000); }
+  try { await subir("cerrada", fotos.cerrada); await subir("abierta", fotos.abierta); marcar(2, true); aviso("Avatar guardado ✓"); }
+  catch (e) { aviso("Error: " + e.message, 7000); }
   $("bSubirAv").disabled = false;
 }
 
 // ---- 3. marca
 async function subirMarca() {
-  if (necesitaToken()) return;
+  if (sinClave()) return;
   const nombre = $("canal").value.trim(); if (!nombre) return aviso("Escribe el nombre del canal");
   try {
-    const prev = await gh("marca.json");
-    const marca = prev ? JSON.parse(decodeURIComponent(escape(atob(prev.content.replace(/\n/g, ""))))) : {};
-    Object.assign(marca, { nombre_canal: nombre, color_barra: $("cBarra").value, color_resaltado: $("cRes").value });
-    await escribir("marca.json", btoa(unescape(encodeURIComponent(JSON.stringify(marca, null, 2)))), "Actualizar canal");
+    await subir("marca", null, { datos: JSON.stringify({ nombre_canal: nombre, color_barra: $("cBarra").value, color_resaltado: $("cRes").value }) });
     marcar(3, true); aviso("Canal guardado ✓");
   } catch (e) { aviso("Error: " + e.message, 7000); }
-}
-
-// ---- 4. prueba y videos
-async function probar() {
-  if (necesitaToken()) return;
-  const id = "prueba-" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
-  const g = { id, titular: "Así suena tu fábrica de shorts",
-    gancho: "Este video lo hizo una inteligencia artificial con mi voz, y nadie lo grabó.",
-    desarrollo: "Cada mañana busca las noticias más importantes, verifica los datos y escribe un guion con gancho, desarrollo y cierre. Después genera mi voz, anima mi avatar, le pone subtítulos y lo deja programado para publicarse, todo en automático.",
-    cierre: "Si quieres noticias claras en menos de un minuto, sígueme.",
-    palabras_clave: ["news studio", "technology"], fuente: "" };
-  try { await escribir("guiones/" + id + ".json", btoa(unescape(encodeURIComponent(JSON.stringify(g, null, 2)))), "Guion de prueba desde el estudio"); aviso("¡Listo! En unos 7 minutos toca Ver videos", 6000); }
-  catch (e) { aviso("Error: " + e.message, 7000); }
-}
-async function cargarVideos() {
-  if (necesitaToken()) return;
-  const lista = ((await gh("salidas")) || []).filter(f => f.name.endsWith(".json")).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 8);
-  const out = [];
-  for (const f of lista) { const d = await gh(f.path); const j = JSON.parse(atob(d.content.replace(/\n/g, ""))); out.push(j.url ? `<a href="${j.url}" target="_blank">▶ ${j.id}</a>` : `<span>${j.id} (sin enlace)</span>`); }
-  $("videos").innerHTML = out.join("") || '<p class="tip">Aún no hay videos.</p>';
 }
 async function copiar(id) { try { await navigator.clipboard.writeText($(id).textContent); aviso("Copiado ✓"); } catch (e) { aviso("Mantén presionado el texto para copiarlo"); } }
 
 // ---- estado inicial
 async function iniciar() {
-  $("sinToken").hidden = !!token; $("conToken").hidden = !token; marcar(0, !!token, token ? "Conectado ✓" : "Sin conectar");
-  if (!token) return;
+  $("sinEnlace").hidden = !!clave;
+  if (!clave) return;
   try {
-    const voz = ((await gh("voz")) || []).some(f => f.name !== ".gitkeep"); marcar(1, voz);
-    const av = ((await gh("assets")) || []).filter(f => /\.(png|jpe?g|webp)$/i.test(f.name)).length >= 2; marcar(2, av);
-    const m = await gh("marca.json");
-    if (m) { const j = JSON.parse(decodeURIComponent(escape(atob(m.content.replace(/\n/g, ""))))); if (j.nombre_canal && j.nombre_canal !== "Mi canal de noticias") { $("canal").value = j.nombre_canal; marcar(3, true); } if (j.color_barra) $("cBarra").value = j.color_barra; if (j.color_resaltado) $("cRes").value = j.color_resaltado; }
-  } catch (e) { aviso(e.message, 6000); }
+    const e = await api("estado");
+    marcar(1, e.voz.length > 0);
+    marcar(2, e.assets.length >= 2);
+    if (e.marca) { $("canal").value = e.marca.nombre_canal || ""; if (e.marca.color_barra) $("cBarra").value = e.marca.color_barra; if (e.marca.color_resaltado) $("cRes").value = e.marca.color_resaltado; marcar(3, !!e.marca.nombre_canal); }
+  } catch (err) { aviso(err.message, 6000); if (/no valido/i.test(err.message)) { clave = ""; try { localStorage.removeItem("fabrica_k"); } catch (x) {} $("sinEnlace").hidden = false; } }
 }
 iniciar();
 </script>
