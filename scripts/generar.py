@@ -38,14 +38,32 @@ def dividir_frases(texto, max_chars=220):
     return trozos
 
 
+AUDIO_EXT = {".wav", ".mp3", ".m4a", ".ogg", ".opus", ".aac", ".flac", ".webm", ".mp4", ".3gp", ".amr"}
+IMG_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def preparar_referencia(tmp):
+    """Toma el primer audio de voz/ (cualquier formato del celular) y lo deja en WAV mono 24 kHz, max 30 s."""
+    audios = sorted(p for p in (RAIZ / "voz").glob("*") if p.suffix.lower() in AUDIO_EXT)
+    if not audios:
+        return None
+    dst = tmp / "referencia.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(audios[0]), "-t", "30",
+                    "-ac", "1", "-ar", "24000",
+                    "-af", "silenceremove=start_periods=1:start_threshold=-45dB,loudnorm=I=-16",
+                    "-c:a", "pcm_s16le", str(dst)], check=True)
+    print("Voz de referencia:", audios[0].name)
+    return dst
+
+
 def generar_voz(texto, salida_wav):
     import torch, torchaudio as ta
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
     modelo = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
-    ref = RAIZ / "voz" / "referencia.wav"
-    extra = {"audio_prompt_path": str(ref)} if ref.exists() else {}
-    if not ref.exists():
-        print("AVISO: no hay voz/referencia.wav, se usa la voz por defecto")
+    ref = preparar_referencia(Path(salida_wav).parent)
+    extra = {"audio_prompt_path": str(ref)} if ref else {}
+    if not ref:
+        print("AVISO: no hay audio en voz/, se usa la voz por defecto")
     pausa = torch.zeros(1, int(modelo.sr * 0.25))
     partes = []
     for trozo in dividir_frases(texto):
@@ -119,14 +137,38 @@ def avatar_por_defecto(boca_abierta):
     return a
 
 
-def cargar_avatar():
-    out = {}
-    for estado, archivo in (("cerrada", "avatar_cerrada.png"), ("abierta", "avatar_abierta.png")):
-        p = RAIZ / "assets" / archivo
-        img = Image.open(p).convert("RGBA") if p.exists() else avatar_por_defecto(estado == "abierta")
-        img.thumbnail((520, 520))
-        out[estado] = img
+def recortar_circulo(img):
+    """Si la imagen no tiene fondo transparente, la recorta en circulo con borde."""
+    lado = min(img.size)
+    img = img.crop(((img.width - lado) // 2, (img.height - lado) // 2,
+                    (img.width + lado) // 2, (img.height + lado) // 2)).resize((520, 520))
+    masc = Image.new("L", (520, 520), 0)
+    ImageDraw.Draw(masc).ellipse((8, 8, 512, 512), fill=255)
+    out = Image.new("RGBA", (520, 520), (0, 0, 0, 0))
+    ImageDraw.Draw(out).ellipse((0, 0, 519, 519), fill="#ffffff")
+    out.paste(img.convert("RGB"), (0, 0), masc)
     return out
+
+
+def abrir_avatar(p):
+    img = Image.open(p)
+    tiene_alfa = img.mode in ("RGBA", "LA") and img.getextrema()[-1][0] < 250
+    img = img.convert("RGBA") if tiene_alfa else recortar_circulo(img)
+    img.thumbnail((620, 620))
+    return img
+
+
+def cargar_avatar():
+    """assets/: un archivo con 'cerrada' y otro con 'abierta' en el nombre; si no, las 2 primeras imagenes
+    en orden alfabetico (1a = boca cerrada, 2a = boca abierta). Con una sola imagen, se usa para ambas."""
+    imgs = sorted(p for p in (RAIZ / "assets").glob("*") if p.suffix.lower() in IMG_EXT)
+    cerr = next((p for p in imgs if "cerrad" in p.name.lower()), imgs[0] if imgs else None)
+    abie = next((p for p in imgs if "abiert" in p.name.lower()),
+                next((p for p in imgs if p != cerr), cerr))
+    if not cerr:
+        return {"cerrada": avatar_por_defecto(False), "abierta": avatar_por_defecto(True)}
+    print("Avatar:", cerr.name, "/", abie.name)
+    return {"cerrada": abrir_avatar(cerr), "abierta": abrir_avatar(abie)}
 
 
 # ---------- 5. Texto ----------
