@@ -3,7 +3,7 @@ imagenes de la noticia cada 5 s, avatar pequeno, subtitulos y musica sin copyrig
 
 Uso: python scripts/generar.py guiones/2026-11-26-01.json salidas/
 """
-import json, math, os, random, re, subprocess, sys, wave
+import json, math, os, random, re, subprocess, sys, time, wave
 from pathlib import Path
 
 import numpy as np
@@ -136,7 +136,13 @@ def buscar_commons(termino, usadas):
     params = {"action": "query", "format": "json", "generator": "search", "gsrnamespace": 6,
               "gsrsearch": f"{termino} filetype:bitmap", "gsrlimit": 12, "prop": "imageinfo",
               "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1400}
-    r = requests.get("https://commons.wikimedia.org/w/api.php", params=params, headers=UA, timeout=25).json()
+    r = {}
+    for intento in range(4):
+        resp = requests.get("https://commons.wikimedia.org/w/api.php", params=params, headers=UA, timeout=25)
+        if resp.ok and resp.headers.get("content-type", "").startswith("application/json"):
+            r = resp.json()
+            break
+        time.sleep(2 + 3 * intento)
     paginas = sorted(r.get("query", {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
     for p in paginas:
         ii = (p.get("imageinfo") or [{}])[0]
@@ -168,8 +174,14 @@ def imagenes_noticia(guion, n, carpeta):
                 continue
             url, cred = hit
             dst = carpeta / f"img{len(res)}.jpg"
-            dst.write_bytes(requests.get(url, headers=UA, timeout=40).content)
+            for intento in range(4):
+                resp = requests.get(url, headers=UA, timeout=40)
+                if resp.ok and resp.headers.get("content-type", "").startswith("image/"):
+                    break
+                time.sleep(2 + 3 * intento)
+            dst.write_bytes(resp.content)
             res.append((Image.open(dst).convert("RGB"), cred))
+            time.sleep(1)
             usadas.add(url)
             print("Imagen", len(res), "->", t)
         except Exception as e:

@@ -47,12 +47,12 @@ jobs:
           FN: https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio
           K: 0YtogzqxG1IbA8KKuOsmMh1f
         run: |
-          lista=$(curl -sf "$FN?k=$K&accion=lista" | jq -r '.archivos[]') || { echo "Estudio no disponible"; exit 0; }
+          lista=$(curl -sf --retry 4 --retry-all-errors "$FN?k=$K&accion=lista" | jq -r '.archivos[]') || { echo "Estudio no disponible"; exit 0; }
           if echo "$lista" | grep -q '^voz/'; then find voz -type f ! -name .gitkeep -delete; fi
           if echo "$lista" | grep -q '^assets/'; then find assets -type f ! -name .gitkeep -delete; fi
           for r in $lista; do
             mkdir -p "$(dirname "$r")"
-            curl -sf "$FN?k=$K&accion=bajar&ruta=$r" -o "$r" && echo "Traido del estudio: $r"
+            curl -sf --retry 4 --retry-all-errors --retry-delay 3 "$FN?k=$K&accion=bajar&ruta=$r" -o "$r" && echo "Traido del estudio: $r" || echo "FALLO al traer $r"
           done
 
       - name: Elegir guiones pendientes
@@ -100,4 +100,5 @@ jobs:
           git config user.email "fabrica-bot@users.noreply.github.com"
           git add salidas
           git commit -m "Videos generados" || echo "nada nuevo"
+          git stash -u -q || true
           git pull --rebase -q && git push
