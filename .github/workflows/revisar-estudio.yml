@@ -6,5 +6,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - run: |
-          curl -s "https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio?k=0YtogzqxG1IbA8KKuOsmMh1f&accion=estado"; echo
+          F="https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio?k=0YtogzqxG1IbA8KKuOsmMh1f"
+          curl -s -X POST "$F&accion=subir" -F tipo=marca -F 'datos={"nombre_canal":"Mi canal de noticias"}'; echo
+          curl -s "$F&accion=estado"; echo
           curl -s -o /dev/null -w "sin clave -> %{http_code}\n" "https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio?k=mal"
