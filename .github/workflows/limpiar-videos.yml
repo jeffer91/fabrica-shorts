@@ -1,0 +1,32 @@
+name: Limpiar videos publicados
+
+# Borra de Supabase los videos con mas de 2 dias (ya publicados por Metricool).
+on:
+  schedule:
+    - cron: "17 8 * * *"   # todos los dias, 03:17 hora de Ecuador
+  workflow_dispatch:
+
+jobs:
+  limpiar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Borrar videos viejos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          limite=$(date -u -d '2 days ago' +%s)
+          curl -sf -X POST "$SUPABASE_URL/storage/v1/object/list/shorts" \
+            -H "Authorization: Bearer $SUPABASE_KEY" -H "apikey: $SUPABASE_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"prefix":"","limit":1000}' > lista.json
+          viejos=$(jq -r --argjson lim "$limite" \
+            '[.[] | select(.created_at != null) | select((.created_at | sub("\\.[0-9]+";"") | sub("\\+00:00$";"Z") | fromdateiso8601) < $lim) | .name]' lista.json)
+          echo "Para borrar: $viejos"
+          if [ "$(echo "$viejos" | jq length)" -gt 0 ]; then
+            curl -sf -X DELETE "$SUPABASE_URL/storage/v1/object/shorts" \
+              -H "Authorization: Bearer $SUPABASE_KEY" -H "apikey: $SUPABASE_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"prefixes\": $viejos}"
+          fi
