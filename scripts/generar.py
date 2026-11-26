@@ -87,6 +87,33 @@ def duracion_wav(p):
         return w.getnframes() / w.getframerate()
 
 
+def cargar_local_flexible(carpeta, t3_archivo):
+    """Como ChatterboxMultilingualTTS.from_local, pero tolera buffers que el modelo calcula solo
+    (p. ej. tokenizer._mel_filters) y que no vienen en el archivo s3gen_v3."""
+    import torch
+    import chatterbox.mtl_tts as mt
+    from safetensors.torch import load_file
+    cpu = torch.device("cpu")
+    ve = mt.VoiceEncoder()
+    ve.load_state_dict(torch.load(carpeta / "ve.pt", map_location=cpu, weights_only=True))
+    ve.eval()
+    t3 = mt.T3(mt.T3Config.multilingual())
+    st = load_file(carpeta / t3_archivo)
+    if "model" in st.keys():
+        st = st["model"][0]
+    t3.load_state_dict(st)
+    t3.eval()
+    s3 = mt.S3Gen()
+    faltan, sobran = s3.load_state_dict(torch.load(carpeta / "s3gen.pt", map_location=cpu, weights_only=True), strict=False)
+    graves = [k for k in faltan if not k.startswith("tokenizer.")]
+    if graves or sobran:
+        raise RuntimeError(f"s3gen incompatible: faltan {graves[:3]}, sobran {list(sobran)[:3]}")
+    s3.eval()
+    tok = mt.MTLTokenizer(str(carpeta / "grapheme_mtl_merged_expanded_v1.json"))
+    conds = mt.Conditionals.load(carpeta / "conds.pt", map_location=cpu) if (carpeta / "conds.pt").exists() else None
+    return mt.ChatterboxMultilingualTTS(t3, s3, ve, tok, "cpu", conds=conds)
+
+
 def cargar_modelo_voz():
     """Intenta, en orden: modelo afinado para espanol latinoamericano (v3) -> multilingue v3 -> v2."""
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
@@ -101,7 +128,7 @@ def cargar_modelo_voz():
         s3 = hf_hub_download("ResembleAI/Chatterbox-Multilingual-es-mx-latam", "s3gen_v3.pt")
         for nombre, origen in (("t3_es_mx_latam.safetensors", t3), ("s3gen.pt", s3)):
             (carpeta / nombre).unlink(missing_ok=True); (carpeta / nombre).symlink_to(Path(origen).resolve())
-        m = ChatterboxMultilingualTTS.from_local(carpeta, "cpu", t3_model="t3_es_mx_latam.safetensors")
+        m = cargar_local_flexible(carpeta, "t3_es_mx_latam.safetensors")
         print("Modelo de voz: Chatterbox V3 espanol latinoamericano")
         return m
     except Exception as e:
@@ -163,7 +190,9 @@ def generar_voz(texto, salida_wav, tomas=2):
     for i, frase in enumerate(dividir_frases(texto)):
         hablada = numeros_a_palabras(frase)
         mejor, mejor_p = None, -1
-        for k in range(tomas if juez else 1):
+        for k in range((tomas + 1) if juez else 1):
+            if k == tomas and mejor_p >= 0.8:      # 3a toma solo si las 2 primeras salieron mal
+                break
             torch.manual_seed(1000 * i + k)
             wav = modelo.generate(hablada, language_id="es", exaggeration=0.6, cfg_weight=0.4,
                                   temperature=0.8).cpu()
@@ -174,7 +203,7 @@ def generar_voz(texto, salida_wav, tomas=2):
             f = tmp / f"toma_{i}_{k}.wav"
             ta.save(str(f), wav, modelo.sr)
             segs, _ = juez.transcribe(str(f), language="es")
-            oido = " ".join(s.text for s in segs)
+            oido = numeros_a_palabras(" ".join(s.text for s in segs))
             p = difflib.SequenceMatcher(None, normalizar_frase(hablada).split(), normalizar_frase(oido).split()).ratio()
             if p > mejor_p:
                 mejor, mejor_p = wav, p
