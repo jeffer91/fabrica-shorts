@@ -81,12 +81,13 @@ jobs:
             id=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$g")
             python scripts/generar.py "$g" build
             url=""
+            nombre="$id-$(date +%H%M%S)"
             if [ -n "$SUPABASE_URL" ]; then
-              curl -sf -X POST "$SUPABASE_URL/storage/v1/object/shorts/$id.mp4" \
+              curl -sf -X POST "$SUPABASE_URL/storage/v1/object/shorts/$nombre.mp4" \
                 -H "Authorization: Bearer $SUPABASE_KEY" -H "apikey: $SUPABASE_KEY" \
                 -H "Content-Type: video/mp4" \
                 --data-binary "@build/$id.mp4" && \
-              url="$SUPABASE_URL/storage/v1/object/public/shorts/$id.mp4"
+              url="$SUPABASE_URL/storage/v1/object/public/shorts/$nombre.mp4"
             fi
             if [ -z "$url" ]; then
               cp "build/$id.mp4" "salidas/$id.mp4"
