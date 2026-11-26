@@ -67,7 +67,7 @@ jobs:
             if [ -n "$SUPABASE_URL" ]; then
               curl -sf -X POST "$SUPABASE_URL/storage/v1/object/shorts/$id.mp4" \
                 -H "Authorization: Bearer $SUPABASE_KEY" -H "apikey: $SUPABASE_KEY" \
-                -H "Content-Type: video/mp4" -H "x-upsert: true" \
+                -H "Content-Type: video/mp4" \
                 --data-binary "@build/$id.mp4" && \
               url="$SUPABASE_URL/storage/v1/object/public/shorts/$id.mp4"
             fi
