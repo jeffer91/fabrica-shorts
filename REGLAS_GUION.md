@@ -10,6 +10,12 @@ Estas reglas las sigue Claude cada vez que escribe un guion para la fábrica.
 - Los subtítulos salen **exactamente** del texto del guion: revisar ortografía y tildes, porque se ven en pantalla.
 - Escribir los números como se dicen si son raros ("ocho Balones de Oro"); los años pueden ir en cifras.
 
+## Que suene natural (no robótico)
+- Escribir como se habla, no como se lee un periódico: "Ojo con esto", "Mira", "¿Y sabes qué?", "Imagínate".
+- Frases de 6 a 15 palabras. Mezclar una pregunta y una exclamación en cada guion: dan subidas y bajadas de tono.
+- Usar comas donde uno respira; el modelo hace la pausa ahí.
+- Evitar siglas raras y paréntesis; escribir nombres extranjeros como se pronuncian si son difíciles.
+
 ## Verificación de datos
 - Confirmar cada dato en al menos 2 fuentes confiables (medios deportivos, sitio oficial del club, liga o FIFA/UEFA).
 - Si es rumor o fichaje no oficial, decirlo ("según reportes de…").

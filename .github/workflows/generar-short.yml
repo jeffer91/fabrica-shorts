@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: modelos-v1
+          key: modelos-v3-latam
 
       - name: Instalar dependencias
         run: |

@@ -40,31 +40,45 @@ def F(tam, negrita=True):
 
 
 # ---------- 1. Voz ----------
-def dividir_frases(texto, max_chars=220):
-    frases = re.split(r"(?<=[.!?;:])\s+", texto.strip())
-    trozos, actual = [], ""
-    for f in frases:
-        if len(actual) + len(f) < max_chars:
-            actual = (actual + " " + f).strip()
-        else:
-            if actual:
-                trozos.append(actual)
-            actual = f
-    if actual:
-        trozos.append(actual)
-    return trozos
+def dividir_frases(texto):
+    """Una frase por llamada al modelo: la entonacion sale mas natural que con bloques largos."""
+    frases = [f.strip() for f in re.split(r"(?<=[.!?;:])\s+", texto.strip()) if f.strip()]
+    out = []
+    for f in frases:                       # frases muy largas se parten en la coma mas central
+        while len(f) > 200 and "," in f:
+            comas = [m.start() for m in re.finditer(",", f)]
+            c = min(comas, key=lambda i: abs(i - len(f) / 2))
+            out.append(f[:c + 1].strip()); f = f[c + 1:].strip()
+        out.append(f)
+    return out
+
+
+def numeros_a_palabras(texto):
+    """'2009' -> 'dos mil nueve', '3-0' -> 'tres a cero': el modelo lee mejor palabras que cifras."""
+    try:
+        from num2words import num2words
+    except Exception:
+        return texto
+    texto = re.sub(r"\b(\d+)\s*-\s*(\d+)\b", lambda m: f"{m.group(1)} a {m.group(2)}", texto)
+    texto = re.sub(r"(\d+)\s*%", lambda m: m.group(1) + " por ciento", texto)
+    texto = re.sub(r"\b(\d+)º", lambda m: num2words(int(m.group(1)), lang="es", to="ordinal"), texto)
+    return re.sub(r"\d+", lambda m: num2words(int(m.group(0)), lang="es"), texto)
 
 
 def preparar_referencia(tmp):
+    """Limpia tu grabacion: quita ruido y silencios y deja solo voz. El modelo usa ~10 s de referencia."""
     audios = sorted(p for p in (RAIZ / "voz").glob("*") if p.suffix.lower() in AUDIO_EXT)
     if not audios:
         return None
     dst = tmp / "referencia.wav"
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(audios[0]), "-t", "30",
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-fflags", "+discardcorrupt", "-i", str(audios[0]),
                     "-ac", "1", "-ar", "24000",
-                    "-af", "silenceremove=start_periods=1:start_threshold=-45dB,loudnorm=I=-16",
-                    "-c:a", "pcm_s16le", str(dst)], check=True)
-    print("Voz de referencia:", audios[0].name)
+                    "-af", "highpass=f=70,afftdn=nf=-25,"
+                           "silenceremove=start_periods=1:start_threshold=-40dB:"
+                           "stop_periods=-1:stop_duration=0.6:stop_threshold=-40dB,"
+                           "loudnorm=I=-16:TP=-1.5",
+                    "-t", "20", "-c:a", "pcm_s16le", str(dst)], check=True)
+    print("Voz de referencia:", audios[0].name, f"({duracion_wav(dst):.1f} s limpios)")
     return dst
 
 
@@ -73,19 +87,101 @@ def duracion_wav(p):
         return w.getnframes() / w.getframerate()
 
 
-def generar_voz(texto, salida_wav):
-    import torch, torchaudio as ta
+def cargar_modelo_voz():
+    """Intenta, en orden: modelo afinado para espanol latinoamericano (v3) -> multilingue v3 -> v2."""
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
-    modelo = ChatterboxMultilingualTTS.from_pretrained(device="cpu")
+    from huggingface_hub import hf_hub_download, snapshot_download
+    try:
+        base = Path(snapshot_download("ResembleAI/chatterbox", allow_patterns=[
+            "ve.pt", "grapheme_mtl_merged_expanded_v1.json", "conds.pt", "Cangjie5_TC.json"]))
+        carpeta = Path("modelo_latam"); carpeta.mkdir(exist_ok=True)
+        for f in base.iterdir():
+            (carpeta / f.name).unlink(missing_ok=True); (carpeta / f.name).symlink_to(f.resolve())
+        t3 = hf_hub_download("ResembleAI/Chatterbox-Multilingual-es-mx-latam", "t3_es_mx_latam.safetensors")
+        s3 = hf_hub_download("ResembleAI/Chatterbox-Multilingual-es-mx-latam", "s3gen_v3.pt")
+        for nombre, origen in (("t3_es_mx_latam.safetensors", t3), ("s3gen.pt", s3)):
+            (carpeta / nombre).unlink(missing_ok=True); (carpeta / nombre).symlink_to(Path(origen).resolve())
+        m = ChatterboxMultilingualTTS.from_local(carpeta, "cpu", t3_model="t3_es_mx_latam.safetensors")
+        print("Modelo de voz: Chatterbox V3 espanol latinoamericano")
+        return m
+    except Exception as e:
+        print("No se pudo cargar el modelo latam:", repr(e)[:200])
+    for version in ("v3", None):
+        try:
+            m = ChatterboxMultilingualTTS.from_pretrained(device="cpu", **({"t3_model": version} if version else {}))
+            print("Modelo de voz: multilingue", version or "v2")
+            return m
+        except TypeError:
+            continue
+        except Exception as e:
+            print("Fallo modelo", version, repr(e)[:200])
+    raise SystemExit("No se pudo cargar ningun modelo de voz")
+
+
+def recortar_silencio(wav, sr, umbral=0.012, margen=0.04):
+    """Quita el silencio que el modelo deja al inicio y al final de cada frase."""
+    import torch
+    x = wav.squeeze(0)
+    env = torch.nn.functional.avg_pool1d(x.abs()[None, None], int(sr * 0.02), stride=int(sr * 0.01))[0, 0]
+    activos = (env > umbral * x.abs().max()).nonzero()
+    if len(activos) == 0:
+        return wav
+    ini = max(0, int(activos[0].item() * sr * 0.01 - margen * sr))
+    fin = min(x.numel(), int(activos[-1].item() * sr * 0.01 + 0.02 * sr + margen * sr))
+    return wav[:, ini:fin]
+
+
+def pausa_despues(frase):
+    f = frase.rstrip()
+    if f.endswith(("?", "!")):
+        return 0.38
+    if f.endswith((".", ":")):
+        return 0.32
+    if f.endswith(";"):
+        return 0.26
+    return 0.18          # corte en una coma
+
+
+def generar_voz(texto, salida_wav, tomas=2):
+    """Genera frase por frase con parametros mas expresivos. De cada frase hace 2 tomas y se queda con
+    la que Whisper entiende mejor (evita palabras comidas, repeticiones o sonidos raros)."""
+    import difflib, torch, torchaudio as ta
+    modelo = cargar_modelo_voz()
     ref = preparar_referencia(Path(salida_wav).parent)
-    extra = {"audio_prompt_path": str(ref)} if ref else {}
-    if not ref:
+    if ref:
+        modelo.prepare_conditionals(str(ref), exaggeration=0.6)
+    else:
         print("AVISO: no hay audio en voz/, se usa la voz por defecto")
-    pausa = torch.zeros(1, int(modelo.sr * 0.25))
+    juez = None
+    try:
+        from faster_whisper import WhisperModel
+        juez = WhisperModel("small", device="cpu", compute_type="int8")
+    except Exception as e:
+        print("Sin juez de tomas:", e)
+    tmp = Path(salida_wav).parent
     partes = []
-    for trozo in dividir_frases(texto):
-        wav = modelo.generate(trozo, language_id="es", exaggeration=0.55, cfg_weight=0.5, **extra)
-        partes += [wav.cpu(), pausa]
+    for i, frase in enumerate(dividir_frases(texto)):
+        hablada = numeros_a_palabras(frase)
+        mejor, mejor_p = None, -1
+        for k in range(tomas if juez else 1):
+            torch.manual_seed(1000 * i + k)
+            wav = modelo.generate(hablada, language_id="es", exaggeration=0.6, cfg_weight=0.4,
+                                  temperature=0.8).cpu()
+            wav = recortar_silencio(wav, modelo.sr)
+            if not juez:
+                mejor = wav
+                break
+            f = tmp / f"toma_{i}_{k}.wav"
+            ta.save(str(f), wav, modelo.sr)
+            segs, _ = juez.transcribe(str(f), language="es")
+            oido = " ".join(s.text for s in segs)
+            p = difflib.SequenceMatcher(None, normalizar_frase(hablada).split(), normalizar_frase(oido).split()).ratio()
+            if p > mejor_p:
+                mejor, mejor_p = wav, p
+            if p > 0.95:
+                break
+        print(f"Frase {i + 1}: parecido {mejor_p:.2f}")
+        partes += [mejor, torch.zeros(1, int(modelo.sr * pausa_despues(frase)))]
     crudo = Path(salida_wav).with_suffix(".crudo.wav")
     ta.save(str(crudo), torch.cat(partes, dim=1), modelo.sr)
     normalizar_y_ajustar(crudo, salida_wav)
@@ -95,7 +191,8 @@ def normalizar_y_ajustar(entrada, salida):
     """PCM 16 bits, volumen estandar y, si se pasa de 45 s, acelera un poco (max 15%) para encajar."""
     tmp = Path(salida).with_suffix(".norm.wav")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(entrada), "-ac", "1",
-                    "-af", "loudnorm=I=-16:TP=-1.5", "-ar", "24000", "-c:a", "pcm_s16le", str(tmp)], check=True)
+                    "-af", "highpass=f=70,equalizer=f=180:t=q:w=1:g=2,equalizer=f=6500:t=q:w=1.5:g=-2,loudnorm=I=-16:TP=-1.5",
+                    "-ar", "24000", "-c:a", "pcm_s16le", str(tmp)], check=True)
     d = duracion_wav(tmp)
     factor = 1.0
     if d > DUR_MAX - 0.5:
