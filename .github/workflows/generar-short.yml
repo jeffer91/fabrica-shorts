@@ -87,4 +87,4 @@ jobs:
           git config user.email "fabrica-bot@users.noreply.github.com"
           git add salidas
           git commit -m "Videos generados" || echo "nada nuevo"
-          git push
+          git pull --rebase -q && git push
