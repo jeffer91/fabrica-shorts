@@ -13,8 +13,8 @@ jobs:
     steps:
       - name: Borrar videos viejos
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://omqmynobelpqzbzipxjz.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tcW15bm9iZWxwcXpiemlweGp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNDQwODUsImV4cCI6MjEwOTcyMDA4NX0.-70SSFVWYJ1mnZlVbSbQu2lmSupJC9_6EBT4VK4ynx8' }}
         run: |
           limite=$(date -u -d '2 days ago' +%s)
           curl -sf -X POST "$SUPABASE_URL/storage/v1/object/list/shorts" \

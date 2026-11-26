@@ -42,21 +42,25 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-      - name: Elegir guiones nuevos
-        id: lista
+      - name: Elegir guiones pendientes
         run: |
+          : > lista.txt
           if [ -n "${{ github.event.inputs.guion }}" ]; then
             echo "${{ github.event.inputs.guion }}" > lista.txt
           else
-            git diff --name-only --diff-filter=AM HEAD~1 HEAD -- 'guiones/*.json' > lista.txt || true
+            for g in guiones/*.json; do
+              [ -e "$g" ] || continue
+              id=$(python -c "import json,sys;print(json.load(open(sys.argv[1]))['id'])" "$g")
+              [ -e "salidas/$id.json" ] || echo "$g" >> lista.txt
+            done
           fi
           cat lista.txt
 
       - name: Generar videos
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://omqmynobelpqzbzipxjz.supabase.co' }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY || vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9tcW15bm9iZWxwcXpiemlweGp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNDQwODUsImV4cCI6MjEwOTcyMDA4NX0.-70SSFVWYJ1mnZlVbSbQu2lmSupJC9_6EBT4VK4ynx8' }}
         run: |
           mkdir -p salidas
           while read -r g; do
