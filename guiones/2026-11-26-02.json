@@ -5,14 +5,61 @@
   "desarrollo": "Pasó este jueves en la Europa League, en el Doosan Arena de Pilsen. Patrik Hrosovsky abrió el marcador para el Viktoria Plzen. Después llegó Prince Adu, y antes del descanso, Christophe Kabongo puso el tercero. ¿Y sabes qué? Nada más arrancar el segundo tiempo, Kabongo hizo su doblete. ¡Cuatro a cero! Fue la primera derrota del Benfica en el torneo, y se queda cuarto con doce puntos.",
   "cierre": "¿Golpe de suerte, o el Benfica está en crisis? Te leo en comentarios, y sígueme en 11 Records.",
   "imagenes": [
-    {"buscar": "S.L. Benfica players", "debe": ["Benfica"]},
-    {"buscar": "Doosan Arena Plzen stadium", "debe": ["Doosan"], "wiki": "Doosan Arena"},
-    {"buscar": "Patrik Hrosovsky Viktoria Plzen", "debe": ["Hrosovsky"], "wiki": "Patrik Hrošovský"},
-    {"buscar": "Prince Kwabena Adu Viktoria Plzen", "debe": ["Prince", "Adu"], "wiki": "Prince Kwabena Adu"},
-    {"buscar": "Christophe Kabongo Viktoria Plzen", "debe": ["Kabongo"], "wiki": "Christophe Kabongo"},
-    {"buscar": "FC Viktoria Plzen", "debe": ["Viktoria", "Plzen"], "wiki": "FC Viktoria Plzeň"},
-    {"buscar": "Estadio da Luz Benfica", "debe": ["Luz"], "wiki": "Estádio da Luz"},
-    {"buscar": "SL Benfica team", "debe": ["Benfica"], "wiki": "S.L. Benfica"}
+    {
+      "buscar": "",
+      "wiki": "S.L. Benfica"
+    },
+    {
+      "buscar": "Doosan Arena Plzen stadium",
+      "debe": [
+        "Doosan"
+      ],
+      "wiki": "Doosan Arena"
+    },
+    {
+      "buscar": "Patrik Hrosovsky Viktoria Plzen",
+      "debe": [
+        "Hrosovsky"
+      ],
+      "wiki": "Patrik Hrošovský"
+    },
+    {
+      "buscar": "Prince Kwabena Adu Viktoria Plzen",
+      "debe": [
+        "Prince",
+        "Adu"
+      ],
+      "wiki": "Prince Kwabena Adu"
+    },
+    {
+      "buscar": "FC Viktoria Plzen",
+      "debe": [
+        "Viktoria",
+        "Plzen"
+      ],
+      "wiki": "FC Viktoria Plzeň"
+    },
+    {
+      "buscar": "Viktoria Plzen players celebrate goal",
+      "debe": [
+        "Viktoria",
+        "Plzen"
+      ]
+    },
+    {
+      "buscar": "Estadio da Luz Lisboa",
+      "debe": [
+        "Luz"
+      ],
+      "wiki": "Estádio da Luz"
+    },
+    {
+      "buscar": "Benfica Estadio da Luz match",
+      "debe": [
+        "Benfica",
+        "Luz"
+      ]
+    }
   ],
   "fuente": "https://www.goal.com/en-in/news/video-milan-complete-thrilling-europa-league-comeback-as-plzen-sink-benfica-with-four-goals/bltb97c5821ba058842"
 }
