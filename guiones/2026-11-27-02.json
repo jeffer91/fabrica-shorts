@@ -1,0 +1,18 @@
+{
+  "id": "2026-11-27-02",
+  "titular": "Messi, a un partido de la eliminación",
+  "gancho": "Messi tiene noventa minutos para salvar la temporada, y lo tiene todo en contra.",
+  "desarrollo": "Mira, el Inter Miami es el campeón defensor de la MLS. Pero en la primera ronda, el Columbus Crew lo goleó tres a cero, en Miami. Gonzalo Tapia hizo doblete. Encima, Gonzalo Luján se fue expulsado, y hoy no juega. La serie es al mejor de tres. Esta noche juegan en Columbus, a las ocho, hora de Ecuador. ¿Y si pierde? ¡Se acaba la defensa del título!",
+  "cierre": "¿Messi lo remonta o se despide? Te leo en comentarios, y sígueme en 11 Records.",
+  "imagenes": [
+    {"buscar": "Lionel Messi Inter Miami", "debe": ["Messi"], "wiki": "Lionel Messi"},
+    {"buscar": "Inter Miami CF", "debe": ["Inter", "Miami"], "wiki": "Inter Miami CF"},
+    {"buscar": "Columbus Crew", "debe": ["Columbus", "Crew"], "wiki": "Columbus Crew"},
+    {"buscar": "Gonzalo Tapia Columbus Crew", "debe": ["Gonzalo", "Tapia"], "wiki": "Gonzalo Tapia"},
+    {"buscar": "Gonzalo Luján Inter Miami", "debe": ["Lujan"], "wiki": "Gonzalo Luján"},
+    {"buscar": "Lower.com Field Columbus stadium", "debe": ["Lower.com"], "wiki": "ScottsMiracle-Gro Field"},
+    {"buscar": "Lionel Messi Inter Miami 2025", "debe": ["Messi", "Inter"]},
+    {"buscar": "Inter Miami MLS Cup", "debe": ["Inter", "Miami"]}
+  ],
+  "fuente": "https://www.beinsports.com/es-us/football/mls/articles/-qu%C3%A9-necesita-el-inter-miami-y-messi-para-evitar-la-eliminaci%C3%B3n-de-los-playoffs-de-la-mls-2026-11-23"
+}
