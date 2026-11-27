@@ -1,0 +1,67 @@
+{
+  "id": "2026-11-27-01",
+  "titular": "¡Remontada épica! El Milan voltea al Olympiacos",
+  "gancho": "El Milan perdía dos a cero en Grecia, y terminó ganando cuatro a dos.",
+  "desarrollo": "Pasó este jueves por la Europa League, en el Georgios Karaiskakis. El Olympiacos de Armando, la Hormiga, González, golpeó primero con un autogol de Maignan, y luego marcó Jota Silva. Pero ojo, apareció Omari Hutchinson. Metió un golazo, y armó los goles de Cissé y de Pulisic. ¡Tres goles en quince minutos! En el descuento, Moreira sentenció el cuatro a dos. ¿Y sabes qué? El ecuatoriano Pervis Estupiñán fue titular, y el Olympiacos perdió su invicto en el torneo.",
+  "cierre": "¿El Milan vuelve a dar miedo en Europa? Te leo en comentarios, y sígueme en 11 Records.",
+  "imagenes": [
+    {
+      "buscar": "AC Milan players",
+      "debe": [
+        "Milan"
+      ],
+      "wiki": "AC Milan"
+    },
+    {
+      "buscar": "Karaiskakis Stadium Piraeus",
+      "debe": [
+        "Karaiskakis"
+      ],
+      "wiki": "Karaiskakis Stadium"
+    },
+    {
+      "buscar": "Armando Gonzalez Guadalajara footballer",
+      "debe": [
+        "Armando",
+        "Gonzalez"
+      ]
+    },
+    {
+      "buscar": "Mike Maignan",
+      "debe": [
+        "Maignan"
+      ],
+      "wiki": "Mike Maignan"
+    },
+    {
+      "buscar": "Omari Hutchinson",
+      "debe": [
+        "Omari",
+        "Hutchinson"
+      ],
+      "wiki": "Omari Hutchinson"
+    },
+    {
+      "buscar": "Christian Pulisic AC Milan",
+      "debe": [
+        "Pulisic"
+      ],
+      "wiki": "Christian Pulisic"
+    },
+    {
+      "buscar": "Pervis Estupiñán Ecuador",
+      "debe": [
+        "Estupinan"
+      ],
+      "wiki": "Pervis Estupiñán"
+    },
+    {
+      "buscar": "Olympiacos F.C.",
+      "debe": [
+        "Olympiacos"
+      ],
+      "wiki": "Olympiacos F.C."
+    }
+  ],
+  "fuente": "https://www.acmilan.com/en/news/articles/europa-league/2026-11-26/sensational-comeback-in-piraeus"
+}
