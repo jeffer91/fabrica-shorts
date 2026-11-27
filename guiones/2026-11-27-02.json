@@ -21,18 +21,18 @@
       "wiki": "Inter Miami CF"
     },
     {
-      "buscar": "Columbus Crew",
+      "buscar": "Lower.com Field Columbus stadium",
       "debe": [
-        "Columbus"
+        "Lower.com"
       ],
-      "wiki": "Columbus Crew"
+      "wiki": "ScottsMiracle-Gro Field"
     },
     {
-      "buscar": "Gonzalo Tapia",
+      "buscar": "Gonzalo Tapia Columbus Crew",
       "debe": [
-        "Tapia"
-      ],
-      "wiki": "Gonzalo Tapia"
+        "Tapia",
+        "Columbus"
+      ]
     },
     {
       "buscar": "Gonzalo Luján",
@@ -40,13 +40,6 @@
         "Lujan"
       ],
       "wiki": "Gonzalo Luján"
-    },
-    {
-      "buscar": "Lower.com Field Columbus stadium",
-      "debe": [
-        "Lower.com"
-      ],
-      "wiki": "ScottsMiracle-Gro Field"
     },
     {
       "buscar": "Messi Inter Miami",
@@ -58,6 +51,13 @@
       "buscar": "Lionel Messi Argentina",
       "debe": [
         "Messi"
+      ]
+    },
+    {
+      "buscar": "Inter Miami Chase Stadium",
+      "debe": [
+        "Inter",
+        "Miami"
       ]
     }
   ],
