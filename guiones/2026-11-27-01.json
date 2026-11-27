@@ -6,24 +6,23 @@
   "cierre": "¿El Milan vuelve a dar miedo en Europa? Te leo en comentarios, y sígueme en 11 Records.",
   "imagenes": [
     {
-      "buscar": "AC Milan players",
+      "buscar": "AC Milan San Siro fans",
       "debe": [
         "Milan"
       ],
-      "wiki": "AC Milan"
+      "wiki": "San Siro"
     },
     {
-      "buscar": "Karaiskakis Stadium Piraeus",
+      "buscar": "Georgios Karaiskakis Stadium",
       "debe": [
         "Karaiskakis"
       ],
       "wiki": "Karaiskakis Stadium"
     },
     {
-      "buscar": "Armando Gonzalez Guadalajara footballer",
+      "buscar": "Olympiacos fans Piraeus",
       "debe": [
-        "Armando",
-        "Gonzalez"
+        "Olympiacos"
       ]
     },
     {
@@ -42,7 +41,7 @@
       "wiki": "Omari Hutchinson"
     },
     {
-      "buscar": "Christian Pulisic AC Milan",
+      "buscar": "Christian Pulisic",
       "debe": [
         "Pulisic"
       ],
@@ -61,6 +60,12 @@
         "Olympiacos"
       ],
       "wiki": "Olympiacos F.C."
+    },
+    {
+      "buscar": "AC Milan players celebrate",
+      "debe": [
+        "Milan"
+      ]
     }
   ],
   "fuente": "https://www.acmilan.com/en/news/articles/europa-league/2026-11-26/sensational-comeback-in-piraeus"
