@@ -41,16 +41,33 @@ def F(tam, negrita=True):
 
 # ---------- 1. Voz ----------
 def dividir_frases(texto):
-    """Una frase por llamada al modelo: la entonacion sale mas natural que con bloques largos."""
+    """Separa el texto en frases; las muy largas se parten en la coma mas central."""
     frases = [f.strip() for f in re.split(r"(?<=[.!?;:])\s+", texto.strip()) if f.strip()]
     out = []
-    for f in frases:                       # frases muy largas se parten en la coma mas central
+    for f in frases:
         while len(f) > 200 and "," in f:
             comas = [m.start() for m in re.finditer(",", f)]
             c = min(comas, key=lambda i: abs(i - len(f) / 2))
             out.append(f[:c + 1].strip()); f = f[c + 1:].strip()
         out.append(f)
     return out
+
+
+BLOQUE_MAX = 230      # caracteres por llamada al modelo (2-3 frases, ~12-14 s de voz)
+
+
+def dividir_bloques(texto):
+    """Junta 2-3 frases por llamada: el modelo encadena la entonacion entre ellas y la voz
+    fluye como una narracion, en vez de sonar a frases sueltas pegadas."""
+    bloques, actual = [], ""
+    for f in dividir_frases(texto):
+        if actual and len(actual) + 1 + len(f) > BLOQUE_MAX:
+            bloques.append(actual); actual = f
+        else:
+            actual = (actual + " " + f).strip()
+    if actual:
+        bloques.append(actual)
+    return bloques
 
 
 def numeros_a_palabras(texto):
@@ -145,7 +162,7 @@ def cargar_modelo_voz():
     raise SystemExit("No se pudo cargar ningun modelo de voz")
 
 
-def recortar_silencio(wav, sr, umbral=0.012, margen=0.04):
+def recortar_silencio(wav, sr, umbral=0.012, margen=0.07):
     """Quita el silencio que el modelo deja al inicio y al final de cada frase."""
     import torch
     x = wav.squeeze(0)
@@ -159,19 +176,30 @@ def recortar_silencio(wav, sr, umbral=0.012, margen=0.04):
 
 
 def pausa_despues(frase):
+    """Respiro corto entre bloques (el modelo ya pone las pausas dentro de cada bloque)."""
     f = frase.rstrip()
     if f.endswith(("?", "!")):
-        return 0.38
-    if f.endswith((".", ":")):
-        return 0.32
-    if f.endswith(";"):
-        return 0.26
-    return 0.18          # corte en una coma
+        return 0.28
+    if f.endswith((".", ":", ";")):
+        return 0.22
+    return 0.12          # corte en una coma
+
+
+def suavizar_bordes(wav, sr, ms=12):
+    """Rampa de entrada y salida de pocos milisegundos: evita clics al unir bloques."""
+    import torch
+    n = min(int(sr * ms / 1000), wav.shape[1] // 2)
+    if n > 0:
+        r = torch.linspace(0, 1, n)
+        wav = wav.clone()
+        wav[:, :n] *= r
+        wav[:, -n:] *= r.flip(0)
+    return wav
 
 
 def generar_voz(texto, salida_wav, tomas=2):
-    """Genera frase por frase con parametros mas expresivos. De cada frase hace 2 tomas y se queda con
-    la que Whisper entiende mejor (evita palabras comidas, repeticiones o sonidos raros)."""
+    """Genera por bloques de 2-3 frases con tono de narrador. De cada bloque hace 2 tomas y se queda
+    con la que Whisper entiende mejor (evita palabras comidas, repeticiones o sonidos raros)."""
     import difflib, torch, torchaudio as ta
     modelo = cargar_modelo_voz()
     ref = preparar_referencia(Path(salida_wav).parent)
@@ -187,16 +215,17 @@ def generar_voz(texto, salida_wav, tomas=2):
         print("Sin juez de tomas:", e)
     tmp = Path(salida_wav).parent
     partes = []
-    for i, frase in enumerate(dividir_frases(texto)):
+    for i, frase in enumerate(dividir_bloques(texto)):
         hablada = numeros_a_palabras(frase)
         mejor, mejor_p = None, -1
         for k in range((tomas + 1) if juez else 1):
             if k == tomas and mejor_p >= 0.8:      # 3a toma solo si las 2 primeras salieron mal
                 break
             torch.manual_seed(1000 * i + k)
-            wav = modelo.generate(hablada, language_id="es", exaggeration=0.6, cfg_weight=0.4,
+            # cfg_weight bajo = ritmo mas natural y menos "leido"; exaggeration da energia de narrador
+            wav = modelo.generate(hablada, language_id="es", exaggeration=0.6, cfg_weight=0.35,
                                   temperature=0.8).cpu()
-            wav = recortar_silencio(wav, modelo.sr)
+            wav = suavizar_bordes(recortar_silencio(wav, modelo.sr), modelo.sr)
             if not juez:
                 mejor = wav
                 break
@@ -209,7 +238,7 @@ def generar_voz(texto, salida_wav, tomas=2):
                 mejor, mejor_p = wav, p
             if p > 0.95:
                 break
-        print(f"Frase {i + 1}: parecido {mejor_p:.2f}")
+        print(f"Bloque {i + 1}: parecido {mejor_p:.2f}")
         partes += [mejor, torch.zeros(1, int(modelo.sr * pausa_despues(frase)))]
     crudo = Path(salida_wav).with_suffix(".crudo.wav")
     ta.save(str(crudo), torch.cat(partes, dim=1), modelo.sr)
@@ -217,7 +246,8 @@ def generar_voz(texto, salida_wav, tomas=2):
 
 
 def normalizar_y_ajustar(entrada, salida):
-    """PCM 16 bits, volumen estandar y, si se pasa de 45 s, acelera un poco (max 15%) para encajar."""
+    """PCM 16 bits y volumen estandar. Solo acelera si se pasa de 45 s, y como mucho un 6%:
+    acelerar mas deja la voz atropellada y artificial."""
     tmp = Path(salida).with_suffix(".norm.wav")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(entrada), "-ac", "1",
                     "-af", "highpass=f=70,equalizer=f=180:t=q:w=1:g=2,equalizer=f=6500:t=q:w=1.5:g=-2,loudnorm=I=-16:TP=-1.5",
@@ -225,7 +255,7 @@ def normalizar_y_ajustar(entrada, salida):
     d = duracion_wav(tmp)
     factor = 1.0
     if d > DUR_MAX - 0.5:
-        factor = min(1.15, d / (DUR_MAX - 0.8))
+        factor = min(1.06, d / (DUR_MAX - 0.8))
         print(f"Voz de {d:.1f} s: se acelera x{factor:.2f}")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp), "-af", f"atempo={factor}",
                     "-c:a", "pcm_s16le", str(salida)], check=True)
@@ -463,11 +493,23 @@ def musica_fondo(dur, salida):
     """Usa una pista de musica/ si existe; si no, compone una base deportiva original con numpy."""
     pistas = sorted(p for p in (RAIZ / "musica").glob("*") if p.suffix.lower() in AUDIO_EXT)
     if pistas:
-        elegida = random.choice(pistas)
-        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-stream_loop", "-1", "-i", str(elegida),
-                        "-t", f"{dur + 1:.2f}", "-ac", "2", "-ar", "44100", str(salida)], check=True)
-        print("Musica:", elegida.name)
-        return
+        random.shuffle(pistas)
+        for elegida in pistas:
+            try:
+                largo = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                              "-of", "csv=p=0", str(elegida)],
+                                             capture_output=True, text=True, check=True).stdout.strip() or 0)
+                # empieza en un punto distinto de la cancion cada vez (salta la intro y deja el final)
+                inicio = random.uniform(min(8.0, largo * 0.1), largo - dur - 3) if largo > dur + 20 else 0.0
+                total = dur + 1
+                subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", f"{inicio:.2f}",
+                                "-stream_loop", "-1", "-i", str(elegida), "-t", f"{total:.2f}",
+                                "-af", f"afade=t=in:d=0.8,afade=t=out:st={max(0, total - 1.5):.2f}:d=1.5",
+                                "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le", str(salida)], check=True)
+                print(f"Musica: {elegida.name} desde {inicio:.0f} s")
+                return
+            except Exception as e:
+                print("Pista de musica ilegible, se prueba otra:", elegida.name, repr(e)[:120])
     sr, bpm = 44100, 118
     beat = 60 / bpm
     n = int((dur + 1.5) * sr)
@@ -554,6 +596,69 @@ def cargar_avatar(marca, tam=210):
     return {"cerrada": avatar_circular(a, tam, marca), "abierta": avatar_circular(b, tam, marca)}
 
 
+VID_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
+
+
+def avatar_sincronizado(wav_path, tmp):
+    """Tu clip de avatar/ con la boca movida segun la voz (Wav2Lip). Devuelve la ruta del video o
+    None si no hay clip o algo falla; en ese caso se usa el avatar de imagenes."""
+    clips = sorted(p for p in (RAIZ / "avatar").glob("*") if p.suffix.lower() in VID_EXT)
+    w2l = Path(os.environ.get("WAV2LIP_DIR", RAIZ / "wav2lip")).resolve()
+    if not clips:
+        return None
+    if not (w2l / "checkpoints" / "wav2lip_gan.pth").exists():
+        print("Avatar en video: falta Wav2Lip, se usa el avatar de imagenes")
+        return None
+    voz16 = (tmp / "voz16.wav").resolve()
+    salida = (tmp / "avatar_sync.mp4").resolve()
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav_path), "-ac", "1", "-ar", "16000",
+                        str(voz16)], check=True)
+        import hashlib
+        huella = hashlib.md5(clips[0].read_bytes()).hexdigest()[:12]
+        cache = RAIZ / "wav2lip_cache"
+        cache.mkdir(exist_ok=True)
+        entorno = dict(os.environ, W2L_CACHE=str((cache / f"caras-{huella}.npy").resolve()))
+        t0 = time.time()
+        r = subprocess.run([sys.executable, "inference.py", "--checkpoint_path", "checkpoints/wav2lip_gan.pth",
+                            "--face", str(clips[0].resolve()), "--audio", str(voz16), "--outfile", str(salida),
+                            "--pads", "0", "15", "0", "0", "--nosmooth"],
+                           cwd=w2l, env=entorno, capture_output=True, text=True, timeout=1800)
+        if r.returncode != 0 or not salida.exists() or salida.stat().st_size < 10000:
+            print("Wav2Lip fallo, se usa el avatar de imagenes:\n", (r.stderr or r.stdout)[-1500:])
+            return None
+        print(f"Avatar: {clips[0].name} con labios sincronizados ({time.time() - t0:.0f} s)")
+        return salida
+    except Exception as e:
+        print("Wav2Lip fallo, se usa el avatar de imagenes:", repr(e)[:300])
+        return None
+
+
+class AvatarVideo:
+    """Lee el video sincronizado cuadro a cuadro (30 fps) y lo entrega recortado en circulo."""
+
+    def __init__(self, ruta, tam, marca):
+        self.tam, self.marca, self.ultimo = tam, marca, None
+        self.proc = subprocess.Popen(
+            ["ffmpeg", "-loglevel", "error", "-i", str(ruta), "-an", "-vf",
+             f"fps={FPS},crop='min(iw,ih)':'min(iw,ih)',scale={tam}:{tam}:flags=lanczos",
+             "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE)
+
+    def siguiente(self):
+        n = self.tam * self.tam * 3
+        datos = self.proc.stdout.read(n) if self.proc else b""
+        if len(datos) == n:
+            img = Image.frombytes("RGB", (self.tam, self.tam), datos)
+            self.ultimo = avatar_circular(img, self.tam, self.marca)
+        return self.ultimo
+
+    def cerrar(self):
+        if self.proc:
+            self.proc.stdout.close()
+            self.proc.wait()
+            self.proc = None
+
+
 # ---------- 6. Utilidades de dibujo ----------
 def hex_rgb(h):
     h = h.lstrip("#")
@@ -606,7 +711,8 @@ def leer_volumen(wav_path):
 # derecho, porque abajo y a la derecha YouTube/TikTok/Instagram ponen sus botones y textos.
 TOP_Y = 90                      # cabecera: marca + titular
 IMG_X, IMG_Y, IMG_W, IMG_H = 60, 430, 960, 720     # imagen principal (se ajusta bajo el titular)
-AV_TAM = 210                    # avatar pequeno, montado en la esquina inferior izquierda de la imagen
+AV_TAM = 210                    # avatar de imagenes, en la esquina inferior izquierda de la imagen
+AV_VID = 300                    # avatar en video (tu cara real): mas grande para que se vea el gesto
 
 
 def capa_fija(guion, marca):
@@ -668,9 +774,13 @@ def render(guion, wav_path, salida_mp4, tmp):
     global IMG_Y
     IMG_Y = max(IMG_Y, fin_cabecera + 40)
     sombra_img = sombra((IMG_W, IMG_H), 34)
-    av_x, av_y = 28, IMG_Y + IMG_H - AV_TAM + 10      # sobre la esquina inferior izquierda de la imagen
     sub_y = IMG_Y + IMG_H + 95
     avatar = cargar_avatar(marca)
+    av_video, tam_av = None, AV_TAM
+    sync = avatar_sincronizado(wav_path, tmp)
+    if sync:
+        av_video, tam_av = AvatarVideo(sync, AV_VID, marca), AV_VID
+    av_x, av_y = 28, IMG_Y + IMG_H - tam_av + 10      # sobre la esquina inferior izquierda de la imagen
     f_sub, f_cred = F(80), F(22, False)
     grupos = [palabras[i:i + 3] for i in range(0, len(palabras), 3)]
 
@@ -749,13 +859,18 @@ def render(guion, wav_path, salida_mp4, tmp):
                 d.text((x, sub_y), pal, font=fs, fill=color, stroke_width=7, stroke_fill="#000000")
                 x += d.textlength(pal, font=fs)
 
-        # avatar pequeno que habla
+        # avatar que habla: tu video con labios sincronizados o, si no hay, las dos imagenes
         v = vol[min(fr, len(vol) - 1)] if len(vol) else 0
-        av = avatar["abierta" if v > 0.18 else "cerrada"]
-        marco.alpha_composite(av, (av_x, av_y - int(v * 10)))
+        av = av_video.siguiente() if av_video else None
+        if av is not None:
+            marco.alpha_composite(av, (av_x, av_y))
+        else:
+            marco.alpha_composite(avatar["abierta" if v > 0.18 else "cerrada"], (av_x, av_y - int(v * 10)))
 
         ff.stdin.write(marco.convert("RGB").tobytes())
     ff.stdin.close()
+    if av_video:
+        av_video.cerrar()
     if ff.wait() != 0:
         raise SystemExit("ffmpeg fallo al armar el video")
 

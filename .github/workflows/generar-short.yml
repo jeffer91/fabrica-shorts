@@ -42,6 +42,23 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
           pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
+      - name: Cache de Wav2Lip (avatar con labios sincronizados)
+        uses: actions/cache@v4
+        with:
+          path: |
+            wav2lip
+            wav2lip_cache
+          key: wav2lip-v1-${{ hashFiles('avatar/**', 'scripts/preparar_wav2lip.sh') }}
+          restore-keys: wav2lip-v1-
+
+      - name: Preparar Wav2Lip
+        # si falla, el video se arma igual con el avatar de imagenes
+        continue-on-error: true
+        run: |
+          pip install --no-deps "opencv-python-headless==4.10.0.84" tqdm
+          python -c "import cv2, librosa, scipy, numba; print('cv2', cv2.__version__, 'librosa', librosa.__version__)"
+          bash scripts/preparar_wav2lip.sh wav2lip
+
       - name: Traer voz, avatar y marca del estudio
         env:
           FN: https://omqmynobelpqzbzipxjz.supabase.co/functions/v1/estudio

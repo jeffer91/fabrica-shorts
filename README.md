@@ -25,6 +25,12 @@ Convierte un guion en un short vertical (1080x1920) con tu voz clonada, tu avata
 }
 ```
 
+## Avatar en video y música
+- `avatar/base.mp4`: tu clip de 10-20 s mirando a cámara. Wav2Lip le mueve la boca según la voz.
+  Si no hay clip o Wav2Lip falla, se usan las imágenes de `assets/`.
+- `musica/`: pistas sin copyright (Biblioteca de audio de YouTube, "No se requiere atribución").
+  Cada video toma una al azar y empieza en un punto distinto. Si está vacía, se genera una base.
+
 ## Archivos que faltan poner
 - `voz/referencia.wav`: 10 a 30 s de tu voz, limpia y sin música.
 - `assets/avatar_cerrada.png` y `assets/avatar_abierta.png`: tu caricatura con fondo transparente.
