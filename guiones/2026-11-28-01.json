@@ -28,23 +28,21 @@
       "wiki": "Inter Miami CF"
     },
     {
-      "buscar": "Columbus Crew",
+      "buscar": "Columbus Crew players",
       "debe": [
         "Columbus",
         "Crew"
-      ],
-      "wiki": "Columbus Crew"
+      ]
     },
     {
-      "buscar": "Santiago Rodríguez New York City FC",
+      "buscar": "Columbus Crew match Lower.com Field",
       "debe": [
-        "Santiago",
-        "Rodriguez"
-      ],
-      "wiki": "Santiago Rodríguez (footballer, born 2000)"
+        "Columbus",
+        "Crew"
+      ]
     },
     {
-      "buscar": "Columbus Crew fans Nordecke",
+      "buscar": "Columbus Crew fans",
       "debe": [
         "Columbus",
         "Crew"
