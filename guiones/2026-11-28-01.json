@@ -1,0 +1,68 @@
+{
+  "id": "2026-11-28-01",
+  "titular": "¡Se acabó! Columbus elimina al Miami de Messi",
+  "gancho": "Se acabó el sueño: el Inter Miami de Messi quedó eliminado, y con un gol al final.",
+  "desarrollo": "Pasó anoche en Columbus, por los playoffs de la MLS. Ojo, el Miami era el campeón defensor, pero había perdido el primer partido tres a cero. El partido iba cero a cero, y todos esperaban los penales. Pero a pocos minutos del final, apareció Santiago Rodríguez, y ¡gol! Uno a cero, y serie cerrada dos a cero. Mira esto: Messi, con treinta y nueve años, se queda sin defender el título.",
+  "cierre": "¿Fin de una era en Miami, o Messi vuelve más fuerte? Te leo en comentarios, y sígueme en 11 Records.",
+  "imagenes": [
+    {
+      "buscar": "Lionel Messi Inter Miami",
+      "debe": [
+        "Messi"
+      ],
+      "wiki": "Lionel Messi"
+    },
+    {
+      "buscar": "Lower.com Field Columbus stadium",
+      "debe": [
+        "Lower.com"
+      ],
+      "wiki": "ScottsMiracle-Gro Field"
+    },
+    {
+      "buscar": "Inter Miami",
+      "debe": [
+        "Inter",
+        "Miami"
+      ],
+      "wiki": "Inter Miami CF"
+    },
+    {
+      "buscar": "Columbus Crew",
+      "debe": [
+        "Columbus",
+        "Crew"
+      ],
+      "wiki": "Columbus Crew"
+    },
+    {
+      "buscar": "Santiago Rodríguez New York City FC",
+      "debe": [
+        "Santiago",
+        "Rodriguez"
+      ],
+      "wiki": "Santiago Rodríguez (footballer, born 2000)"
+    },
+    {
+      "buscar": "Columbus Crew fans Nordecke",
+      "debe": [
+        "Columbus",
+        "Crew"
+      ]
+    },
+    {
+      "buscar": "Messi Inter Miami",
+      "debe": [
+        "Messi"
+      ]
+    },
+    {
+      "buscar": "Lionel Messi",
+      "debe": [
+        "Messi"
+      ],
+      "wiki": "Lionel Messi"
+    }
+  ],
+  "fuente": "https://www.espn.com/soccer/story/_/id/50617897/columbus-eliminates-inter-miami-messi-mls-playoffs"
+}
